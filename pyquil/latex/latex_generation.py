@@ -13,20 +13,39 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
+"""Convert a ``Program`` to a LaTeX quantum circuit diagram.
+
+.. deprecated:: 4.0
+    This module has been moved: import from ``pyquil.latex`` instead.
+
+.. deprecated:: PENDING_DEPRECATION_RELEASE
+    ``pyquil.latex`` is itself deprecated and will be removed in pyQuil v5, with no replacement in pyQuil.
+"""
 
 import warnings
-from typing import Optional
 
+from deprecated.sphinx import deprecated
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, PyQuilDeprecationWarning
 from pyquil.latex._diagram import DiagramSettings
 from pyquil.quil import Program
 
+warnings.warn(
+    f"The module {__name__} is deprecated and will be removed in pyQuil v5, with no "
+    f"replacement in pyQuil. -- Deprecated since version {PENDING_DEPRECATION_RELEASE}.",
+    PyQuilDeprecationWarning,
+    stacklevel=2,
+)
 
-def to_latex(circuit: Program, settings: Optional[DiagramSettings] = None) -> str:
+
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
+def to_latex(circuit: Program, settings: DiagramSettings | None = None) -> str:
+    """Produce a circuit diagram in LaTeX for a given pyQuil Program."""
     from pyquil.latex._main import to_latex
 
-    warnings.warn(
-        '"pyquil.latex.latex_generation.to_latex" has been moved -- please import it'
-        'as "from pyquil.latex import to_latex going forward"',
-        FutureWarning,
-    )
     return to_latex(circuit, settings)

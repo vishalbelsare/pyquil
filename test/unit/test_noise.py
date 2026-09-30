@@ -1,32 +1,38 @@
+# TODO(pyquil-5.0): Remove this file. These tests exercise the legacy KrausModel/NoiseModel
+# API in pyquil.noise, which is superseded by pyquil.noise._channels / pyquil.noise._noise_model.
+# Equivalent coverage lives in test_noise_model.py.
+
 from collections import OrderedDict
 
 import numpy as np
 import pytest
 from pytest_mock import MockerFixture
+from qcs_sdk import ExecutionData, RegisterData, ResultData
+from qcs_sdk.qvm import QVMResultData
 
 from pyquil.api._qam import QAMExecutionResult
-from pyquil.gates import RZ, RX, I, CZ
+from pyquil.gates import CZ, RX, RZ, I
 from pyquil.noise import (
-    pauli_kraus_map,
-    damping_kraus_map,
-    dephasing_kraus_map,
-    tensor_kraus_maps,
-    _get_program_gates,
-    _decoherence_noise_model,
-    add_decoherence_noise,
-    combine_kraus_maps,
-    damping_after_dephasing,
     INFINITY,
-    apply_noise_model,
-    _noise_model_program_header,
+    NO_NOISE,
     KrausModel,
     NoiseModel,
-    corrupt_bitstring_probs,
-    correct_bitstring_probs,
-    estimate_bitstring_probs,
+    _decoherence_noise_model,
+    _get_program_gates,
+    _noise_model_program_header,
+    add_decoherence_noise,
+    apply_noise_model,
     bitstring_probs_to_z_moments,
+    combine_kraus_maps,
+    correct_bitstring_probs,
+    corrupt_bitstring_probs,
+    damping_after_dephasing,
+    damping_kraus_map,
+    dephasing_kraus_map,
     estimate_assignment_probs,
-    NO_NOISE,
+    estimate_bitstring_probs,
+    pauli_kraus_map,
+    tensor_kraus_maps,
 )
 from pyquil.quil import Pragma, Program
 from pyquil.quilbase import DefGate, Gate
@@ -35,10 +41,10 @@ from pyquil.quilbase import DefGate, Gate
 def test_pauli_kraus_map():
     probabilities = [0.1, 0.2, 0.3, 0.4]
     k1, k2, k3, k4 = pauli_kraus_map(probabilities)
-    assert np.allclose(k1, np.sqrt(0.1) * np.eye(2), atol=1 * 10 ** -8)
-    assert np.allclose(k2, np.sqrt(0.2) * np.array([[0, 1.0], [1.0, 0]]), atol=1 * 10 ** -8)
-    assert np.allclose(k3, np.sqrt(0.3) * np.array([[0, -1.0j], [1.0j, 0]]), atol=1 * 10 ** -8)
-    assert np.allclose(k4, np.sqrt(0.4) * np.array([[1, 0], [0, -1]]), atol=1 * 10 ** -8)
+    assert np.allclose(k1, np.sqrt(0.1) * np.eye(2), atol=1 * 10**-8)
+    assert np.allclose(k2, np.sqrt(0.2) * np.array([[0, 1.0], [1.0, 0]]), atol=1 * 10**-8)
+    assert np.allclose(k3, np.sqrt(0.3) * np.array([[0, -1.0j], [1.0j, 0]]), atol=1 * 10**-8)
+    assert np.allclose(k4, np.sqrt(0.4) * np.array([[1, 0], [0, -1]]), atol=1 * 10**-8)
 
     two_q_pauli_kmaps = pauli_kraus_map(np.kron(probabilities, list(reversed(probabilities))))
     q1_pauli_kmaps = [k1, k2, k3, k4]
@@ -106,8 +112,8 @@ def test_damping_after_dephasing():
 def test_noise_helpers():
     gates = RX(np.pi / 2, 0), RX(-np.pi / 2, 1), I(1), CZ(0, 1)
     prog = Program(*gates)
-    inferred_gates = _get_program_gates(prog)
-    assert set(inferred_gates) == set(gates)
+    inferred_gates = [g.out() for g in _get_program_gates(prog)]
+    assert set(inferred_gates) == set([g.out() for g in gates])
 
 
 def test_decoherence_noise():
@@ -254,9 +260,9 @@ def test_readout_compensation():
     for ap in aps:
         ap.flat[ap.flat < 0] = 0.0
         ap /= ap.sum()
-        assert np.alltrue(ap >= 0)
+        assert (ap >= 0).all()
 
-    assert np.alltrue(p >= 0)
+    assert (p >= 0).all()
 
     p_corrupted = corrupt_bitstring_probs(p, aps)
     p_restored = correct_bitstring_probs(p_corrupted, aps)
@@ -291,12 +297,44 @@ def test_estimate_assignment_probs(mocker: MockerFixture):
     mock_qc.compiler = mock_compiler
     mock_qc
     mock_qc.run.side_effect = [
-        QAMExecutionResult(executable=None, readout_data={'ro': np.array([[0]]) * int(round(p00 * trials)) + np.array([[1]]) * int(round((1 - p00) * trials))}),  # I gate results
-        QAMExecutionResult(executable=None, readout_data={'ro': np.array([[1]]) * int(round(p11 * trials)) + np.array([[0]]) * int(round((1 - p11) * trials))}),  # X gate results
+        QAMExecutionResult(
+            executable=None,
+            data=ExecutionData(
+                result_data=ResultData(
+                    QVMResultData.from_memory_map(
+                        {
+                            "ro": RegisterData.from_i16(
+                                (
+                                    np.array([[0]]) * int(round(p00 * trials))
+                                    + np.array([[1]]) * int(round((1 - p00) * trials))
+                                ).tolist()
+                            )
+                        }
+                    )
+                )
+            ),
+        ),  # I gate results
+        QAMExecutionResult(
+            executable=None,
+            data=ExecutionData(
+                result_data=ResultData(
+                    QVMResultData.from_memory_map(
+                        {
+                            "ro": RegisterData.from_i16(
+                                (
+                                    np.array([[1]]) * int(round(p11 * trials))
+                                    + np.array([[0]]) * int(round((1 - p11) * trials))
+                                ).tolist()
+                            )
+                        }
+                    )
+                )
+            ),
+        ),  # X gate results
     ]
     ap_target = np.array([[p00, 1 - p11], [1 - p00, p11]])
 
-    povm_pragma = Pragma("READOUT-POVM", (0, "({} {} {} {})".format(*ap_target.flatten())))
+    povm_pragma = Pragma("READOUT-POVM", [0], "({} {} {} {})".format(*ap_target.flatten()))
     ap = estimate_assignment_probs(0, trials, mock_qc, Program(povm_pragma))
 
     assert mock_compiler.native_quil_to_executable.call_count == 2
@@ -305,7 +343,7 @@ def test_estimate_assignment_probs(mocker: MockerFixture):
     for call in mock_compiler.native_quil_to_executable.call_args_list:
         args, kwargs = call
         prog = args[0]
-        assert prog._instructions[0] == povm_pragma
+        assert povm_pragma in prog.instructions
 
     assert np.allclose(ap, ap_target)
 

@@ -1,5 +1,4 @@
-Contributing to pyQuil
-======================
+# Contributing to pyQuil
 
 Welcome to pyQuil, and thanks for wanting to be a contributor! 🎉
 
@@ -14,8 +13,7 @@ This project and everyone participating in it are governed by pyQuil's
 [Code of Conduct](.github/CODE_OF_CONDUCT.md). In contributing, you are expected
 to uphold this code. Please report unacceptable behavior by contacting support@rigetti.com.
 
-Table of Contents
------------------
+## Table of Contents
 
 [Ways to Contribute](#ways-to-contribute)
 
@@ -26,6 +24,8 @@ Table of Contents
 - [Choosing an Issue to Address](#choosing-an-issue-to-address)
 
 - [Making a Pull Request](#making-a-pull-request)
+
+- [Updating the Changelog](#updating-the-changelog)
 
 - [Adding a Tutorial Notebook](#adding-a-tutorial-notebook)
 
@@ -41,6 +41,8 @@ Table of Contents
 
 - [Working with the Parser](#working-with-the-parser)
 
+- [Deprecating an API](#deprecating-an-api)
+
 - [Using the Docker Image](#using-the-docker-image)
 
 [Tips for Maintainers](#tips-for-maintainers)
@@ -53,8 +55,7 @@ Table of Contents
 
 - [Issue and PR Labels](#issue-and-pr-labels)
 
-Ways to Contribute
-------------------
+## Ways to Contribute
 
 ### Reporting a Bug
 
@@ -83,12 +84,41 @@ see completed, but that we don't currently have the bandwidth for.
 
 ### Making a Pull Request
 
-Once you've selected an issue to tackle, 
-[forked the repository](https://github.com/rigetti/pyquil/fork), and made your changes,
-the next step is to [open a pull request](https://github.com/rigetti/pyquil/compare)!
-We've made opening one easy by providing a [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
-that includes a checklist of things to complete before asking for code review. We look
-forward to reviewing your work! 🙂
+Once you've selected an issue to tackle, [forked the repository](https://github.com/rigetti/pyquil/fork), and made your changes, the next step is to [open a pull request](https://github.com/rigetti/pyquil/compare)! We've made opening one easy by providing a [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) that includes a checklist of things to complete before asking for code review. Additionally, all CI checks must pass before the PR will be merged. We look forward to reviewing your work! 🙂
+
+### Updating the Changelog
+
+Our changelog conventions are based on [keep a changelog](https://keepachangelog.com/en/1.1.0/).
+
+We define a user impacting change to include changes to any of the following:
+
+* the public API, including exception types
+* memory and computational performance
+* the security model
+* deprecations
+* Python version requirements
+* default values
+* dependencies with any of the above implications
+
+These changes require a bullet in [`CHANGELOG.md`](CHANGELOG.md), under the "Unreleased"
+heading at the top. Put it under `### Features`, `### Fixes`, `### Breaking Changes` or
+`### Documentation`; add that subheading if not yet present and link your pull
+request at the end:
+
+```markdown
+## Unreleased
+
+### Features
+
+- A gate angle may be any Quil arithmetic expression over declared memory, so the
+  parametric programs `quilc` emits simulate without rewriting.
+  ([#1869](https://github.com/rigetti/pyquil/pull/1869))
+```
+
+Write a sentence or two in the present tense, for someone reading the release notes rather
+than the diff. A pull request that includes no user-impacting change (see
+[Updating the Changelog]), such as a test or a CI tweak,
+doesn't require an entry. 
 
 ### Adding a Tutorial Notebook
 
@@ -100,8 +130,7 @@ for [Jupyter][jupyter] notebooks. We're always looking for new tutorials to help
 learn about quantum programming, so if you'd like to contribute one, make a pull request
 to that repository directly!
 
-Developer How-Tos
------------------
+## Developer How-Tos
 
 ### Install Dependencies
 
@@ -116,18 +145,14 @@ poetry install
 
 ### Style Guidelines
 
-We use [Black](https://black.readthedocs.io/en/stable/index.html) and `flake8` to automatically
-lint the code and enforce style requirements as part of the CI pipeline. You can run these style
-tests yourself locally by running `make check-style` (to check for violations of the `flake8` rules)
-and `make check-format` (to see if `black` would reformat the code) in the top-level directory of
-the repository. If you aren't presented with any errors, then that means your code is good enough
-for the linter (`flake8`) and formatter (`black`). If `make check-format` fails, it will present
-you with a diff, which you can resolve by running `make format`. Black is very opinionated, but
-saves a lot of time by removing the need for style nitpicks in PR review. We only deviate from its
-default behavior in one category: we choose to use a line length of 100 rather than the Black
-default of 88 (this is configured in the [`pyproject.toml`](pyproject.toml) file). As for `flake8`,
-we ignore a couple of its rules (all for good reasons), and the specific configuration can be
-found in the [`.flake8`](.flake8) file.
+We use [ruff](https://docs.astral.sh/ruff/) to enforce lint and formatting requirements as part of CI. You can run these
+tests yourself locally by running `make check-style` (to check for violations of the linting rules)
+and `make check-format` (to see if `ruff` would reformat the code) in the top-level directory of
+the repository. If you aren't presented with any errors, then that means your code satisfies all
+the linting and formatting requirements. If `make check-format` fails, it will present you with a
+diff, which you can resolve by running `make format`. The ruff formatter is opinionated, but
+saves a lot of time by removing the need for style nitpicks in PR review. The configuration for
+`ruff` can be found in `pyproject.toml`.
 
 In addition to linting and formatting, we use type hints for all parameters and return values,
 following the [PEP 484 syntax][pep-484]. This is enforced as part of the CI via the command
@@ -175,6 +200,12 @@ To skip [slow tests](#slow-tests), you may run:
 make test-fast
 ```
 
+You can run documentation tests with:
+
+```bash
+make doctest
+```
+
 You can run end-to-end tests with:
 
 ```bash
@@ -190,6 +221,51 @@ make test-all TEST_QUANTUM_PROCESSOR=<quantum processor ID>
 > **Note:** for `TEST_QUANTUM_PROCESSOR`, supply a value similar to what you would supply to
 > `get_qc()`. End-to-end tests are most useful against a real QPU, but they can also be run
 > against a QVM (e.g. `make e2e TEST_QUANTUM_PROCESSOR=2q-qvm`).
+
+#### Documentation Tests
+
+We utilize doctests to validate the examples in both our docstrings and Sphinx documentation. This
+ensures that they are correct and remain up to date.
+
+When contributing, consider adding an example to illustrate to users how pyQuil should be used.
+
+To add an example to a docstring, we use Python's [doctest module](https://docs.python.org/3/library/doctest.html#module-doctest).
+As a quick primer, you can add a doctest to a docstring by pre-pending your example code with `>>> `
+and following it with the expected output. For example:
+
+```py
+def hello_world():
+    """Prints Hello World!
+    >>> hello_world()
+    Hello World!
+    """
+    print("Hello World!")
+```
+
+To customize how output is validated, take a look at [the available option flags](https://docs.python.org/3/library/doctest.html#option-flags).
+
+If you want to add an example to Sphinx, here's a quick guide. Your example will be split between a hidden `testsetup` block 
+and a visible `testcode` block. Your expected output will go in a `testoutput` block. Each block shares a test name to tell 
+Sphinx that they are related. Building off the previous hello world example:
+
+```rst
+.. testsetup:: hello_world
+   # Code in the `testsetup` block doesn't appear in the documentation.
+   # Put any code that your example might need, but would unnecessarily
+   # clutter the documentation here.
+   from foo import hello_world
+
+.. testcode:: hello_world
+   # Code in the `testcode` block will appear in the documentation.
+   # Include code needed to illustrate your example here
+   hello_world()
+
+.. testoutput:: hello_world
+   Hello World!
+```
+
+In many cases, this simple structure will suffice, but consider reading the [Sphinx doctest documentation](https://www.sphinx-doc.org/en/master/usage/extensions/doctest.html)
+for more details on how to use it for more complex examples.
 
 #### Slow Tests
 
@@ -232,6 +308,33 @@ code, run all of the slow tests, and also calculate code coverage, you could run
 pytest --cov=pyquil --use-seed=False --runslow <path/to/test-file-or-dir>
 ```
 
+#### Benchmarks
+
+We use benchmarks to ensure the performance of pyQuil is tracked over time, preventing unintended 
+regressions. Benchmarks are written and run using [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/).
+This plugin provides a fixture called `benchmark` that can be used to benchmark a Python function.
+
+For organization, all benchmarks are located in the `test/benchmarks` directory. To run the 
+benchmarks, use the command:
+
+```
+pytest -v test/benchmarks  # or use the Makefile: `make bench`
+```
+
+Note that benchmark results are unique to your machine. They can't be directly compared to benchmark
+results on another machine unless it's a machine with identical specifications running in a similar
+environment. To track performance over time in a controlled way, we use _continuous benchmarking_.
+When a PR is opened, CI will run the benchmarks and compare the results to the most recent results
+on the `master` branch. Since CI always uses the same image and workflow, the results should be
+reasonably consistent. That said, the runners could share resources or do something else unexpected
+that impacts the benchmarks. If you get unexpected results, you may want to re-run the benchmark
+to see if the results are consistent. When opening or reviewing a PR, you should evaluate the results
+and ensure there are no unexpected regressions.
+
+Continuous benchmarking is implemented with 
+[bencher](https://bencher.dev/docs/tutorial/quick-start/). See their documentation for more
+information.
+
 ### Building the Docs
 
 The [pyQuil docs](https://pyquil.readthedocs.io) build automatically as part of the CI pipeline.
@@ -256,6 +359,34 @@ verify that everything looks right!
 ### Working with the Parser
 
 The parser is implemented with Lark. See the [parser README](pyquil/_parser/README.md).
+
+### Deprecating an API
+
+Deprecate a class, function or method with the `deprecated.sphinx.deprecated` decorator, writing
+the reason inline and point to a replacement, if any. [`pyquil/_deprecation.py`](pyquil/_deprecation.py):
+
+```python
+from deprecated.sphinx import deprecated
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, QUAX_REPLACEMENT_NOTE, PyQuilDeprecationWarning
+
+
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,  # stops the reason from being wrapped, which would break its URL
+    reason=f"To be removed in pyQuil v5, where TrajectorySimulator ... instead. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
+class QVM: ...
+```
+
+For anything the decorator can't express, such as a whole module or only some uses of a function,
+call `warnings.warn` with `PyQuilDeprecationWarning` and a `stacklevel` that points at the caller,
+ending the message with `-- Deprecated since version {PENDING_DEPRECATION_RELEASE}.`.
+
+Give the version as `PENDING_DEPRECATION_RELEASE`. Until the release, it evaluates to the installed
+pyQuil version; the release pull request replaces it (see [Release Process](#release-process)).
+Also add a bullet to `CHANGELOG.md` (see [Updating the Changelog]).
 
 ### Using the Docker Image
 
@@ -300,26 +431,16 @@ ARG python_version=3.7
 Once a version has been changed, committed, and pushed, the CI will then use that new
 version in all builds going forward.
 
-Tips for Maintainers
---------------------
+## Tips for Maintainers
 
 ### Merging a Pull Request
 
-When merging PRs, we have a couple of guidelines:
+When merging PRs, we have a few guidelines:
 
-1. Double-check that the PR author has completed everything in the PR checklist that
-   is applicable to the changes.
-
-2. Always use the "squash and merge" option so that every PR corresponds to one commit.
-   This keeps the git history clean and encourages many small (quickly reviewable) PRs
-   rather than behemoth ones with lots of commits.
-
-3. When pressing the merge button, each commit message will be turned into a bullet point
-   below the title of the issue. Make sure to truncate the PR title to ~50 characters
-   (unless completely impossible) so it fits on one line in the commit history, and delete
-   any spurious bullet points that add no meaningful content. Also make sure the final commit
-   message is prefixed with an appropriate Semantic Release prefix, so that it appears
-   correctly in release notes.
+1. Double-check that the PR author has completed everything in the PR checklist that is applicable to the changes.
+2. If the PR includes user-impacting changes (see [Updating the Changelog]), check that it adds a bullet under "Unreleased" in [`CHANGELOG.md`](CHANGELOG.md). This message will land in the release notes.
+3. Always use the "squash and merge" option so that every PR corresponds to one commit. This keeps the git history clean and encourages many small (quickly reviewable) PRs rather than behemoth ones with lots of commits.
+4. When pressing the merge button, each commit message will be turned into a bullet point below the title of the issue. Make sure to truncate the PR title to ~50 characters so it fits on one line in the commit history, and delete any spurious bullet points that add no meaningful content. Also make sure the final commit message is formatted correctly for [Conventional Commits].
 
 ### Managing the CI Pipelines
 
@@ -329,53 +450,90 @@ distribute the repository via [PyPI][pypi] and [DockerHub][docker-forest], all w
 intervention. These pipelines almost always work as expected, but every now and then something goes
 wrong, and it requires a deeper dive.
 
-We use a collection of services for CI/CD -- [GitLab CI][gitlab-ci] and [GitHub Actions][gha] (GHA).
-
-The configuration for GitLab CI is contained in the [`.gitlab-ci.yml`](.gitlab-ci.yml), and the
-GHA configuration is in the [`.github/workflows`](.github/workflows) directory. GHA is responsible
-for running checks and tests for PRs, while GitLab is responsible for additional tasks that require
-access to resources that are not available publicly. This includes publishing docs, publishing to PyPI,
-publishing Docker images, and running end-to-end tests on real QPUs.
+We use [GitHub Actions][gha] (GHA), configured in the [`.github/workflows`](.github/workflows)
+directory: checks and tests for PRs, benchmarks, and publishing to PyPI and DockerHub on release.
 
 ### Release Process
 
-Releases are now automated through the use of Semantic Release. All development must occur on the `rc` branch. For each push to this branch, a release candidate will be published to [GitHub][gh-releases], [PyPI][pypi], and [DockerHub][docker-forest] (with image tags `rc` and `<version>`). 
+A release is the result of merging a release pull request: the version is read from `pyproject.toml`,
+and nothing writes to `master` on its own; the version bump and release notes are explicitly included
+in the PR diff.
 
-When a final release is desired, create a PR from `rc` to `master` and merge (via "Rebase" strategy is okay here, it fast forwards). Update `CHANGELOG.md` with the new to-be-released version number and push that to `master`. Then, in GitLab CI, trigger the manual release action to create a final release for [GitHub][gh-releases], [PyPI][pypi], and [DockerHub][docker-forest] (with image tags `latest` and `<version>`).
+1. **Open a release PR.** Pick the next version according to [semantic versioning][semver]
+   and set it in `pyproject.toml` (e.g. `poetry version 4.19.0`). In `CHANGELOG.md`, rename
+   the "Unreleased" heading to, for example, `## 4.19.0 (2026-09-14)`; leave a fresh, empty
+   `## Unreleased` above it.
 
-After a final release is produced by Semantic Release, `master` will need to be `merged` back into `rc` (due to additional `master` commits created by Semantic Release). This is necessary to re-synchronize `rc` with `master` so that further development can continue on `rc`. **USE A MERGE COMMIT** to do this only after the new version has been committed to master by Semantic Release.
+   Then replace every reference to `PENDING_DEPRECATION_RELEASE` (see
+   [Deprecating an API](#deprecating-an-api)) with the hardcoded release version, so
+   `{PENDING_DEPRECATION_RELEASE}` becomes `4.19.0`, and `.. deprecated:: PENDING_DEPRECATION_RELEASE`
+   becomes `.. deprecated:: 4.19.0`.
+   `git grep -n PENDING_DEPRECATION_RELEASE -- pyquil docs ':!pyquil/_deprecation.py'` lists any
+   dangling references. The release workflow runs the same check before tagging and stops if it
+   finds any.
 
-> ⚠️ **WARNING**:
-> 
-> Never change the history of (e.g., rebasing or force-pushing) the `rc` or `master` branches. Semantic Release relies heavily on tags and notes attached to previous release commits. See [this help page][sr-fp] for more info.
+2. **Merge it**, once CI is green.
 
-[sr-fp]: https://semantic-release.gitbook.io/semantic-release/support/troubleshooting#release-not-found-release-branch-after-git-push-force
+3. **Approve the PyPI upload**, if the `pypi` environment is configured to require it.
+   Every publish goes through that one environment, so whatever it requires applies to
+   release candidates too.
 
-> **Note:** While Semantic Release does a good job of creating release notes for the GitHub release,
-> it may be necessary to hand-modify them after they're posted to simplify/clarify them. For instance,
-> if a feature or fix was introduced on `rc` over a series of commits/PRs (not necessarily adjacent),
-> it will result in multiple bullets in the release notes. It may be necessary to merge these bullets
-> into a single bullet (maintaining references to all commits/PRs) so that the release notes make sense.
+Notes and considerations:
+
+* The workflow detects version changes in `pyproject.toml`, creates a tag, and drafts the
+  [GitHub release][gh-releases] with the relevant `CHANGELOG.md` content.
+* The workflow then uploads to [PyPI][pypi] and [DockerHub][docker-forest] (image tags
+  `latest` and `<version>`). The docs on [Read the Docs][rtd] update separately based on
+  a Github webhook.
+* PyPI uploads use [Trusted Publishing][trusted-publishing] with a short-lived token via
+  OIDC.
+* The workflow only ever runs on `master`.
+
+#### Release candidates
+
+A release candidate may be published in the exact same manner as an official release as
+described above with three exceptions:
+
+* The `pyproject.toml` version must have a proper [pep-440] release candidate suffix.
+* **Leave the changelog entries under "Unreleased"**; the pull request that ships the
+  final release renames the heading. The GitHub release is marked as a prerelease.
+* **Leave `PENDING_DEPRECATION_RELEASE` in place.** Only the pull request that ships the final
+  release replaces it with the version.
+
+#### When something goes wrong
+
+A release is done once its **GitHub release** exists. Until then every push to `master`
+retries it, skipping whatever already succeeded -- an existing tag, an existing release, a
+version already on PyPI.
+
+* **A check failed before the release was created**, for example because the changelog is
+  missing a section for the version. Nothing has been published. Fix it on `master` and
+  the next push completes the release.
+* **The release exists but PyPI does not have it**, because the approval was rejected or
+  expired, or because one of the two packages failed. Re-run the workflow: Actions →
+  **Release pyQuil** → **Run workflow**, from `master`, with the version.
+* **The version was wrong.** Delete the tag and the GitHub release, and open a corrected
+  release PR with a new version.
 
 ### Issue and PR Labels
 
-We use a collection of labels to add metadata to the issues and pull requests in
-the pyQuil project.
+We use a collection of labels to add metadata to the issues and pull requests in the pyQuil project.
 
-| Label | Description |
-| --- | --- |
-| [`bug 🐛`][bug-label] | An issue that needs fixing. |
-| [`devops 🚀`][devops-label] | An issue related to CI/CD. |
-| [`discussion 🤔`][discussion-label] | For design discussions. |
-| [`documentation 📝`][documentation-label] | An issue for improving docs. |
-| [`enhancement ✨`][enhancement-label] | A request for a new feature. |
-| [`good first issue 👶`][good-first-issue-label] | A place to get started. |
-| [`help wanted 👋`][help-wanted-label] | Looking for takers. |
-| [`quality 🎨`][quality-label] | Improve code quality. |
-| [`refactor 🔨`][refactor-label] | Rework existing functionality. |
-| [`work in progress 🚧`][wip-label] | This PR is not ready to be merged. |
+| Label                                           | Description                        |
+|-------------------------------------------------|------------------------------------|
+| [`bug 🐛`][bug-label]                           | An issue that needs fixing.        |
+| [`devops 🚀`][devops-label]                     | An issue related to CI/CD.         |
+| [`discussion 🤔`][discussion-label]             | For design discussions.            |
+| [`documentation 📝`][documentation-label]       | An issue for improving docs.       |
+| [`enhancement ✨`][enhancement-label]            | A request for a new feature.       |
+| [`good first issue 👶`][good-first-issue-label] | A place to get started.            |
+| [`help wanted 👋`][help-wanted-label]           | Looking for takers.                |
+| [`quality 🎨`][quality-label]                   | Improve code quality.              |
+| [`refactor 🔨`][refactor-label]                 | Rework existing functionality.     |
+| [`work in progress 🚧`][wip-label]              | This PR is not ready to be merged. |
 
 [bug-label]: https://github.com/rigetti/pyquil/labels/bug%20%3Abug%3A
+[Conventional Commits]: (https://www.conventionalcommits.org/en/v1.0.0/)
 [devops-label]: https://github.com/rigetti/pyquil/labels/devops%20%3Arocket%3A
 [discussion-label]: https://github.com/rigetti/pyquil/labels/discussion%20%3Athinking%3A
 [documentation-label]: https://github.com/rigetti/pyquil/labels/documentation%20%3Amemo%3A
@@ -385,18 +543,19 @@ the pyQuil project.
 [quality-label]: https://github.com/rigetti/pyquil/labels/quality%20%3Aart%3A
 [refactor-label]: https://github.com/rigetti/pyquil/labels/refactor%20%3Ahammer%3A
 [wip-label]: https://github.com/rigetti/pyquil/labels/work%20in%20progress%20%3Aconstruction%3A
-
 [slack-invite]: https://join.slack.com/t/rigetti-forest/shared_invite/enQtNTUyNTE1ODg3MzE2LWQwNzBlMjZlMmNlN2M5MzQyZDlmOGViODQ5ODI0NWMwNmYzODY4YTc2ZjdjOTNmNzhiYTk2YjVhNTE2NTRkODY
-
 [docker]: https://www.docker.com/products/docker-desktop
 [docker-forest]: https://hub.docker.com/r/rigetti/forest
 [forest]: https://qcs.rigetti.com/sdk-downloads
 [forest-tutorials]: https://github.com/rigetti/forest-tutorials
 [gha]: https://github.com/rigetti/pyquil/actions
 [gh-releases]: https://github.com/rigetti/pyquil/releases
-[gitlab-ci]: https://gitlab.com/rigetti/forest/pyquil/pipelines
 [jupyter]: https://jupyter.org/
 [mybinder]: https://mybinder.org
+[pep-440]: https://peps.python.org/pep-0440/#pre-releases
 [pep-484]: https://www.python.org/dev/peps/pep-0484/
 [pypi]: https://pypi.org/project/pyquil/
+[rtd]: https://readthedocs.org/projects/pyquil/
+[semver]: https://semver.org/
 [sphinx]: https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html
+[trusted-publishing]: https://docs.pypi.org/trusted-publishers/

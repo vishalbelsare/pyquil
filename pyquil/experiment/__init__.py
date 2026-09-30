@@ -1,3 +1,9 @@
+"""Classes and functions to facilitate running experiments on a quantum computer.
+
+.. deprecated:: PENDING_DEPRECATION_RELEASE
+    To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.
+"""
+
 __all__ = [
     "bitstrings_to_expectations",
     "CalibrationMethod",
@@ -28,11 +34,14 @@ __all__ = [
     "zeros_state",
 ]
 
+import warnings
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, PyQuilDeprecationWarning
 from pyquil.experiment._calibration import CalibrationMethod
 from pyquil.experiment._group import (
-    merge_disjoint_experiments,
     get_results_by_qubit_groups,
     group_settings,
+    merge_disjoint_experiments,
 )
 from pyquil.experiment._main import (
     Experiment,
@@ -48,12 +57,11 @@ from pyquil.experiment._result import (
     ratio_variance,
 )
 from pyquil.experiment._setting import (
-    _OneQState,
-    ExperimentSetting,
     SIC0,
     SIC1,
     SIC2,
     SIC3,
+    ExperimentSetting,
     TensorProductState,
     minusX,
     minusY,
@@ -64,3 +72,10 @@ from pyquil.experiment._setting import (
     zeros_state,
 )
 from pyquil.experiment._symmetrization import SymmetrizationLevel
+
+warnings.warn(
+    f"The module {__name__} is deprecated and will be removed in pyQuil v5 in favor of "
+    f"rigetti-qpu-hybrid-benchmark. -- Deprecated since version {PENDING_DEPRECATION_RELEASE}.",
+    PyQuilDeprecationWarning,
+    stacklevel=2,
+)

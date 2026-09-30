@@ -13,23 +13,27 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 import dataclasses
-from typing import Any, Dict, List, Optional, Sequence, Union
+import json
+import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass, field, fields
+from typing import Any, Union
 
-from pyquil._memory import Memory
+from deprecated.sphinx import deprecated
+from qcs_sdk import QCSClient
+from qcs_sdk.compiler.quilc import CompilationResult, CompilerOpts, QuilcClient, TargetDevice, compile_program
+from rpcq.messages import ParameterSpec
+
 from pyquil._version import pyquil_version
-from pyquil.api._compiler_client import CompilerClient, CompileToNativeQuilRequest
+from pyquil.api._compiler_client import CompilerClient
 from pyquil.external.rpcq import compiler_isa_to_target_quantum_processor
-from pyquil.parser import parse_program
 from pyquil.paulis import PauliTerm
 from pyquil.quantum_processor import AbstractQuantumProcessor
 from pyquil.quil import Program
-from pyquil.quilatom import ExpressionDesignator, MemoryReference
+from pyquil.quilatom import MemoryReference
 from pyquil.quilbase import Gate
-from qcs_api_client.client import QCSClientConfiguration
-from rpcq.messages import NativeQuilMetadata, ParameterAref, ParameterSpec
 
 
 class QuilcVersionMismatch(Exception):
@@ -42,40 +46,47 @@ class QuilcNotRunning(Exception):
 
 @dataclass
 class EncryptedProgram:
-    """
-    Encrypted binary, executable on a QPU.
-    """
+    """Encrypted binary, executable on a QPU."""
 
     program: str
     """String representation of an encrypted Quil program."""
 
-    memory_descriptors: Dict[str, ParameterSpec]
+    memory_descriptors: dict[str, ParameterSpec]
     """Descriptors for memory executable's regions, mapped by name."""
 
-    ro_sources: Dict[MemoryReference, str]
+    ro_sources: dict[MemoryReference, str]
     """Readout sources, mapped by memory reference."""
 
-    recalculation_table: Dict[ParameterAref, ExpressionDesignator]
+    _recalculation_table: list[str] = field(default_factory=list, repr=False, init=False)
     """A mapping from memory references to the original gate arithmetic."""
 
-    _memory: Memory
-    """Memory values (parameters) to be sent with the program."""
-
     def copy(self) -> "EncryptedProgram":
-        """
-        Return a deep copy of this EncryptedProgram.
-        """
-        return dataclasses.replace(self, _memory=self._memory.copy())
+        """Return a deep copy of this EncryptedProgram."""
+        return dataclasses.replace(self)
 
-    def write_memory(
-        self,
-        *,
-        region_name: str,
-        value: Union[int, float, Sequence[int], Sequence[float]],
-        offset: Optional[int] = None,
-    ) -> "EncryptedProgram":
-        self._memory._write_value(parameter=ParameterAref(name=region_name, index=(offset or 0)), value=value)
-        return self
+    def __post_init__(self) -> None:
+        if any(f.name == "recalculation_table" for f in fields(self)):
+            warnings.warn(
+                "The recalculation_table field is no longer used. It will be removed in future versions.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+    @property
+    @deprecated(
+        version="4.12.0",
+        reason="The recalculation_table field is no longer used. It will be removed in future versions.",
+    )
+    def recalculation_table(self) -> list[str]:
+        return self._recalculation_table
+
+    @recalculation_table.setter
+    @deprecated(
+        version="4.12.0",
+        reason="The recalculation_table field is no longer used. Recalculation is now performed by the execution service. This field will be removed in future versions.",
+    )
+    def recalculation_table(self, value: list[str]) -> None:
+        self._recalculation_table = value
 
 
 QuantumExecutable = Union[EncryptedProgram, Program]
@@ -89,104 +100,100 @@ class AbstractCompiler(ABC):
         *,
         quantum_processor: AbstractQuantumProcessor,
         timeout: float,
-        client_configuration: Optional[QCSClientConfiguration],
+        client_configuration: QCSClient | None = None,
+        quilc_client: QuilcClient | None = None,
     ) -> None:
         self.quantum_processor = quantum_processor
         self._timeout = timeout
 
-        self._client_configuration = client_configuration or QCSClientConfiguration.load()
-        self._compiler_client = CompilerClient(client_configuration=self._client_configuration, request_timeout=timeout)
+        self._client_configuration = client_configuration or QCSClient.load()
 
-    def get_version_info(self) -> Dict[str, Any]:
-        """
-        Return version information for this compiler and its dependencies.
+        self._compiler_client = CompilerClient(
+            client_configuration=self._client_configuration,
+            request_timeout=timeout,
+            quilc_client=quilc_client,
+        )
+
+    def get_version_info(self) -> dict[str, Any]:
+        """Return version information for this compiler and its dependencies.
 
         :return: Dictionary of version information.
         """
         return {"quilc": self._compiler_client.get_version()}
 
-    def quil_to_native_quil(self, program: Program, *, protoquil: Optional[bool] = None) -> Program:
-        """
-        Compile an arbitrary quil program according to the ISA of ``self.quantum_processor``.
+    def quil_to_native_quil(self, program: Program, *, protoquil: bool | None = None) -> Program:
+        """Convert a Quil program into native Quil, which is supported for execution on a QPU."""
+        result = self._compile_with_quilc(
+            program.out(calibrations=False),
+            options=CompilerOpts(protoquil=protoquil, timeout=self._compiler_client.timeout),
+        )
 
-        :param program: Arbitrary quil to compile
-        :param protoquil: Whether to restrict to protoquil (``None`` means defer to server)
-        :return: Native quil and compiler metadata
-        """
+        native_program = program.copy_everything_except_instructions()
+        native_program.native_quil_metadata = result.native_quil_metadata
+        native_program.inst(result.program)
+
+        return native_program
+
+    def _compile_with_quilc(self, input: str, options: CompilerOpts | None = None) -> CompilationResult:
         self._connect()
-        compiler_isa = self.quantum_processor.to_compiler_isa()
-        request = CompileToNativeQuilRequest(
-            program=program.out(calibrations=False),
-            target_quantum_processor=compiler_isa_to_target_quantum_processor(compiler_isa),
-            protoquil=protoquil,
-        )
-        response = self._compiler_client.compile_to_native_quil(request)
 
-        nq_program = parse_program(response.native_program)
-        nq_program.native_quil_metadata = (
-            None
-            if response.metadata is None
-            else NativeQuilMetadata(
-                final_rewiring=response.metadata.final_rewiring,
-                gate_depth=response.metadata.gate_depth,
-                gate_volume=response.metadata.gate_volume,
-                multiqubit_gate_depth=response.metadata.multiqubit_gate_depth,
-                program_duration=response.metadata.program_duration,
-                program_fidelity=response.metadata.program_fidelity,
-                topological_swaps=response.metadata.topological_swaps,
-                qpu_runtime_estimation=response.metadata.qpu_runtime_estimation,
-            )
+        # convert the pyquil ``TargetDevice`` to the qcs_sdk ``TargetDevice``
+        compiler_isa = self.quantum_processor.to_compiler_isa()
+        target_device_json = json.dumps(compiler_isa_to_target_quantum_processor(compiler_isa).asdict())  # type: ignore
+        target_device = TargetDevice.from_json(target_device_json)
+
+        return compile_program(
+            quil=input,
+            target=target_device,
+            client=self._compiler_client.quilc_client,
+            options=options,
         )
-        nq_program.num_shots = program.num_shots
-        nq_program._calibrations = program.calibrations
-        nq_program._memory = program._memory.copy()
-        return nq_program
 
     def _connect(self) -> None:
         try:
             _check_quilc_version(self._compiler_client.get_version())
-        except TimeoutError:
+        except TimeoutError as e:
             raise QuilcNotRunning(
                 f"Request to quilc at {self._compiler_client.base_url} timed out. "
                 "This could mean that quilc is not running, is not reachable, or is "
-                "responding slowly."
-            )
+                "responding slowly. See the Troubleshooting Guide: "
+                "{DOCS_URL}/troubleshooting.html"
+            ) from e
+
+    def transpile_qasm_2(self, qasm: str) -> Program:
+        """Transpile a QASM 2.0 program string to Quil, returning the result as a :py:class:~`pyquil.quil.Program`."""
+        result = self._compile_with_quilc(qasm, options=CompilerOpts(timeout=self._compiler_client.timeout))
+        return Program(result.program)
 
     @abstractmethod
-    def native_quil_to_executable(self, nq_program: Program) -> QuantumExecutable:
-        """
-        Compile a native quil program to a binary executable.
+    def native_quil_to_executable(self, nq_program: Program, **kwargs: Any) -> QuantumExecutable:
+        """Compile a native quil program to a binary executable.
 
         :param nq_program: Native quil to compile
         :return: An (opaque) binary executable
         """
 
+    @abstractmethod
     def reset(self) -> None:
-        """
-        Reset the state of the this compiler.
-        """
-        pass
+        """Reset the state of the this compiler."""
 
 
 def _check_quilc_version(version: str) -> None:
-    """
-    Verify that there is no mismatch between pyquil and quilc versions.
+    """Verify that there is no mismatch between pyquil and quilc versions.
 
     :param version: quilc version.
     """
     major, minor, _ = map(int, version.split("."))
     if major == 1 and minor < 8:
         raise QuilcVersionMismatch(
-            "Must use quilc >= 1.8.0 with pyquil >= 2.8.0, but you " f"have quilc {version} and pyquil {pyquil_version}"
+            f"Must use quilc >= 1.8.0 with pyquil >= 2.8.0, but you have quilc {version} and pyquil {pyquil_version}"
         )
 
 
 class AbstractBenchmarker(ABC):
     @abstractmethod
     def apply_clifford_to_pauli(self, clifford: Program, pauli_in: PauliTerm) -> PauliTerm:
-        r"""
-        Given a circuit that consists only of elements of the Clifford group,
-        return its action on a PauliTerm.
+        r"""Given a circuit that consists only of elements of the Clifford group, return its action on a PauliTerm.
 
         In particular, for Clifford C, and Pauli P, this returns the PauliTerm
         representing PCP^{\dagger}.
@@ -201,12 +208,12 @@ class AbstractBenchmarker(ABC):
         self,
         depth: int,
         gateset: Sequence[Gate],
-        seed: Optional[int] = None,
-        interleaver: Optional[Program] = None,
-    ) -> List[Program]:
-        """
-        Construct a randomized benchmarking experiment on the given qubits, decomposing into
-        gateset. If interleaver is not provided, the returned sequence will have the form
+        seed: int | None = None,
+        interleaver: Program | None = None,
+    ) -> list[Program]:
+        r"""Construct a randomized benchmarking experiment on the given qubits, decomposing into gateset.
+
+        If interleaver is not provided, the returned sequence will have the form
 
             C_1 C_2 ... C_(depth-1) C_inv ,
 

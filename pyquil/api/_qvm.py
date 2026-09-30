@@ -13,21 +13,20 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Dict, Mapping, Optional, Sequence, Union, Tuple
+from typing import Any
 
 import numpy as np
-from qcs_api_client.client import QCSClientConfiguration
+from deprecated.sphinx import deprecated
+from qcs_sdk import ExecutionData, QCSClient, ResultData, qvm
+from qcs_sdk.qvm import QVMClient, QVMOptions, QVMResultData
 
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, QUAX_REPLACEMENT_NOTE, PyQuilDeprecationWarning
 from pyquil._version import pyquil_version
-from pyquil.api import QuantumExecutable
-from pyquil.api._qam import QAM, QAMExecutionResult
-from pyquil.api._qvm_client import (
-    QVMClient,
-    RunProgramRequest,
-)
+from pyquil.api import QAM, MemoryMap, QAMExecutionResult, QuantumExecutable
 from pyquil.noise import NoiseModel, apply_noise_model
-from pyquil.quil import Program, get_classical_addresses_from_program
+from pyquil.quil import Program
 
 
 class QVMVersionMismatch(Exception):
@@ -39,36 +38,44 @@ class QVMNotRunning(Exception):
 
 
 def check_qvm_version(version: str) -> None:
-    """
-    Verify that there is no mismatch between pyquil and QVM versions.
+    """Verify that there is no mismatch between pyquil and QVM versions.
 
     :param version: The version of the QVM
     """
-    major, minor, patch = map(int, version.split("."))
+    major, minor = map(int, version.split(".")[:2])
     if major == 1 and minor < 8:
         raise QVMVersionMismatch(
-            "Must use QVM >= 1.8.0 with pyquil >= 2.8.0, but you " f"have QVM {version} and pyquil {pyquil_version}"
+            f"Must use QVM >= 1.8.0 with pyquil >= 2.8.0, but you have QVM {version} and pyquil {pyquil_version}"
         )
 
 
 @dataclass
 class QVMExecuteResponse:
     executable: Program
-    memory: Mapping[str, np.ndarray]
+    data: QVMResultData
+
+    @property
+    def memory(self) -> dict[str, np.ndarray]:
+        return {key: matrix.as_ndarray() for key, matrix in self.data.memory.items()}
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5, where TrajectorySimulator samples program outcomes instead. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
 class QVM(QAM[QVMExecuteResponse]):
     def __init__(
         self,
-        noise_model: Optional[NoiseModel] = None,
-        gate_noise: Optional[Tuple[float, float, float]] = None,
-        measurement_noise: Optional[Tuple[float, float, float]] = None,
-        random_seed: Optional[int] = None,
+        noise_model: NoiseModel | None = None,
+        gate_noise: tuple[float, float, float] | None = None,
+        measurement_noise: tuple[float, float, float] | None = None,
+        random_seed: int | None = None,
         timeout: float = 10.0,
-        client_configuration: Optional[QCSClientConfiguration] = None,
+        client: QVMClient | None = None,
     ) -> None:
-        """
-        A virtual machine that classically emulates the execution of Quil programs.
+        """Return a virtual machine that classically emulates the execution of Quil programs.
 
         :param noise_model: A noise model that describes noise to apply when emulating a program's
             execution.
@@ -111,8 +118,12 @@ http://pyquil.readthedocs.io/en/latest/noise_models.html#support-for-noisy-gates
         else:
             raise TypeError("random_seed should be None or a non-negative int")
 
-        client_configuration = client_configuration or QCSClientConfiguration.load()
-        self._qvm_client = QVMClient(client_configuration=client_configuration, request_timeout=timeout)
+        self.timeout = timeout
+
+        if client is None:
+            client = QVMClient.new_http(QCSClient.load().qvm_url)
+        self._client = client
+
         self.connect()
 
     def connect(self) -> None:
@@ -120,66 +131,78 @@ http://pyquil.readthedocs.io/en/latest/noise_models.html#support-for-noisy-gates
             version = self.get_version_info()
             check_qvm_version(version)
         except ConnectionError:
-            raise QVMNotRunning(f"No QVM server running at {self._qvm_client.base_url}")
+            raise QVMNotRunning(f"No QVM server running at {self._client.qvm_url}") from ConnectionError
 
-    def execute(self, executable: QuantumExecutable) -> QVMExecuteResponse:
-        """
-        Synchronously execute the input program to completion.
-        """
-        executable = executable.copy()
+    def execute_with_memory_map_batch(
+        self, executable: QuantumExecutable, memory_maps: Iterable[MemoryMap], **__: Any
+    ) -> list[QVMExecuteResponse]:
+        """Execute a single program on the QVM with multiple memory maps.
 
+        This method is a convenience wrapper around QVM#execute and isn't more efficient than making multiple separate
+        requests to the QVM.
+        """
+        return [self.execute(executable, memory_map) for memory_map in memory_maps]
+
+    def execute(
+        self,
+        executable: QuantumExecutable,
+        memory_map: MemoryMap | None = None,
+        **__: Any,
+    ) -> QVMExecuteResponse:
+        """Execute the input program to completion."""
         if not isinstance(executable, Program):
             raise TypeError(f"`QVM#executable` argument must be a `Program`; got {type(executable)}")
 
-        result_memory = {}
-
-        for region in executable.declarations.keys():
-            result_memory[region] = np.ndarray((executable.num_shots, 0), dtype=np.int64)
+        # Request all memory back from the QVM.
+        addresses = {address: qvm.api.AddressRequest.include_all() for address in executable.declarations.keys()}
 
         trials = executable.num_shots
-        classical_addresses = get_classical_addresses_from_program(executable)
-
         if self.noise_model is not None:
             executable = apply_noise_model(executable, self.noise_model)
 
-        executable._set_parameter_values_at_runtime()
-
-        request = qvm_run_request(
-            executable,
-            classical_addresses,
+        result = qvm.run(
+            executable.out(calibrations=False),
             trials,
+            addresses,
+            memory_map or {},
+            self._client,
             self.measurement_noise,
             self.gate_noise,
             self.random_seed,
+            options=QVMOptions(timeout_seconds=self.timeout),
         )
-        response = self._qvm_client.run_program(request)
-        ram = {key: np.array(val) for key, val in response.results.items()}
-        result_memory.update(ram)
 
-        return QVMExecuteResponse(executable=executable, memory=result_memory)
+        return QVMExecuteResponse(executable=executable, data=result)
 
     def get_result(self, execute_response: QVMExecuteResponse) -> QAMExecutionResult:
-        """
-        Return the results of execution on the QVM.
-
-        Because QVM execution is synchronous, this is a no-op which returns its input.
-        """
-        return QAMExecutionResult(executable=execute_response.executable, readout_data=execute_response.memory)
+        """Return the results of execution on the QVM."""
+        result_data = ResultData(execute_response.data)
+        data = ExecutionData(result_data=result_data, duration=None)
+        return QAMExecutionResult(executable=execute_response.executable, data=data)
 
     def get_version_info(self) -> str:
-        """
-        Return version information for the QVM.
+        """Return version information for the QVM.
 
         :return: String with version information
         """
-        return self._qvm_client.get_version()
+        return qvm.api.get_version_info(self._client, options=QVMOptions(timeout_seconds=self.timeout))
 
 
-def validate_noise_probabilities(noise_parameter: Optional[Tuple[float, float, float]]) -> None:
-    """
-    Is noise_parameter a valid specification of noise probabilities for depolarizing noise?
+def validate_noise_probabilities(noise_parameter: tuple[float, float, float] | None) -> None:
+    """Validate the noise probabilities.
 
-    :param tuple noise_parameter: Tuple of 3 noise parameter values to be validated.
+    This function checks that the provided noise parameters are in the correct format and within the expected ranges.
+
+    :param noise_parameter: A tuple containing three float values representing noise probabilities. If None, the
+    function returns without any validation.
+
+    :type noise_parameter: Optional[tuple[float, float, float]]
+
+    :raises TypeError: If noise_parameter is not a tuple or if any of its elements are not floats.
+    :raises ValueError: If noise_parameter does not have exactly three elements, if the sum of the elements is not
+        between 0 and 1 (inclusive), or if any element is negative.
+
+    :returns: None
     """
     if not noise_parameter:
         return
@@ -196,8 +219,7 @@ def validate_noise_probabilities(noise_parameter: Optional[Tuple[float, float, f
 
 
 def validate_qubit_list(qubit_list: Sequence[int]) -> Sequence[int]:
-    """
-    Check the validity of qubits for the payload.
+    """Check the validity of qubits for the payload.
 
     :param qubit_list: List of qubits to be validated.
     """
@@ -206,65 +228,3 @@ def validate_qubit_list(qubit_list: Sequence[int]) -> Sequence[int]:
     if any(not isinstance(i, int) or i < 0 for i in qubit_list):
         raise TypeError("'qubit_list' must contain positive integer values")
     return qubit_list
-
-
-def prepare_register_list(
-    register_dict: Mapping[str, Union[bool, Sequence[int]]]
-) -> Dict[str, Union[bool, Sequence[int]]]:
-    """
-    Canonicalize classical addresses for the payload and ready MemoryReference instances
-    for serialization.
-
-    This function will cast keys that are iterables of int-likes to a list of Python
-    ints. This is to support specifying the register offsets as ``range()`` or numpy
-    arrays. This mutates ``register_dict``.
-
-    :param register_dict: The classical memory to retrieve. Specified as a dictionary:
-        the keys are the names of memory regions, and the values are either (1) a list of
-        integers for reading out specific entries in that memory region, or (2) True, for
-        reading out the entire memory region.
-    """
-    if not isinstance(register_dict, dict):
-        raise TypeError("register_dict must be a dict but got " + repr(register_dict))
-
-    for k, v in register_dict.items():
-        if isinstance(v, bool):
-            assert v  # If boolean v must be True
-            continue
-
-        indices = [int(x) for x in v]  # support ranges, numpy, ...
-
-        if not all(x >= 0 for x in indices):
-            raise TypeError("Negative indices into classical arrays are not allowed.")
-        register_dict[k] = indices
-
-    return register_dict
-
-
-def qvm_run_request(
-    quil_program: Program,
-    classical_addresses: Mapping[str, Union[bool, Sequence[int]]],
-    trials: int,
-    measurement_noise: Optional[Tuple[float, float, float]],
-    gate_noise: Optional[Tuple[float, float, float]],
-    random_seed: Optional[int],
-) -> RunProgramRequest:
-    if not quil_program:
-        raise ValueError(
-            "You have attempted to run an empty program."
-            " Please provide gates or measure instructions to your program."
-        )
-    if not isinstance(quil_program, Program):
-        raise TypeError("quil_program must be a Quil program object")
-    classical_addresses = prepare_register_list(classical_addresses)
-    if not isinstance(trials, int):
-        raise TypeError("trials must be an integer")
-
-    return RunProgramRequest(
-        program=quil_program.out(calibrations=False),
-        addresses=classical_addresses,  # type: ignore
-        trials=trials,
-        measurement_noise=measurement_noise,
-        gate_noise=gate_noise,
-        seed=random_seed,
-    )

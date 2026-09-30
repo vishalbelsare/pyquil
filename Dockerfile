@@ -1,13 +1,14 @@
 # use multi-stage builds to independently pull dependency versions
 ARG quilc_version=1.20.0
 ARG qvm_version=1.17.1
-ARG python_version=3.7
+ARG python_version=3.11
 
 # use multi-stage builds to independently pull dependency versions
 FROM rigetti/quilc:$quilc_version as quilc
 FROM rigetti/qvm:$qvm_version as qvm
-FROM python:$python_version-buster
+FROM python:$python_version-trixie
 
+# passed in by `.github/workflows/publish.yml`, should match the version just published to pypi
 ARG pyquil_version
 
 # copy over the pre-built quilc binary from the first build stage
@@ -24,6 +25,9 @@ RUN apt-get update && apt-get -yq dist-upgrade && \
 
 # install ipython
 RUN pip install --no-cache-dir ipython
+
+# upgrade pip
+RUN pip install --upgrade pip
 
 # install pyquil
 RUN pip install pyquil==$pyquil_version

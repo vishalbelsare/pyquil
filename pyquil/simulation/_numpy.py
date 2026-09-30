@@ -13,13 +13,16 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
-from typing import Any, List, Optional, Sequence, Tuple, Union, cast
+from collections.abc import Sequence
+from typing import Any, cast
 
 import numpy as np
+from deprecated.sphinx import deprecated
 from numpy.random.mtrand import RandomState
 
-from pyquil.paulis import PauliTerm, PauliSum
-from pyquil.pyqvm import AbstractQuantumSimulator
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, QUAX_REPLACEMENT_NOTE, PyQuilDeprecationWarning
+from pyquil._pyqvm import AbstractQuantumSimulator
+from pyquil.paulis import PauliSum, PauliTerm
 from pyquil.quilbase import Gate
 from pyquil.simulation.matrices import QUANTUM_GATES
 
@@ -43,7 +46,13 @@ from pyquil.simulation.matrices import QUANTUM_GATES
 from pyquil.simulation.tools import all_bitstrings
 
 
-def targeted_einsum(gate: np.ndarray, wf: np.ndarray, wf_target_inds: List[int]) -> np.ndarray:
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
+def targeted_einsum(gate: np.ndarray, wf: np.ndarray, wf_target_inds: list[int]) -> np.ndarray:
     """Left-multiplies the given axes of the wf tensor by the given gate matrix.
 
     Note that the matrix must have a compatible tensor structure.
@@ -74,11 +83,11 @@ def targeted_einsum(gate: np.ndarray, wf: np.ndarray, wf_target_inds: List[int])
     used_data_indices = tuple(data_indices[q] for q in wf_target_inds)
     input_indices = work_indices + used_data_indices
     output_indices = list(data_indices)
-    for w, t in zip(work_indices, wf_target_inds):
+    for w, t in zip(work_indices, wf_target_inds, strict=False):
         output_indices[t] = w
 
     # TODO: `out` does not work if input matrices share memory with outputs, as is usually
-    # TODO: the case when propogating a wavefunction. This might be fixed in numpy 1.15
+    # TODO: the case when propagating a wavefunction. This might be fixed in numpy 1.15
     # https://github.com/numpy/numpy/pull/11286
     # It might be worth re-investigating memory savings with `out` when numpy 1.15 becomes
     # commonplace.
@@ -86,6 +95,12 @@ def targeted_einsum(gate: np.ndarray, wf: np.ndarray, wf_target_inds: List[int])
     return np.einsum(gate, input_indices, wf, data_indices, output_indices)  # type: ignore
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
 def targeted_tensordot(gate: np.ndarray, wf: np.ndarray, wf_target_inds: Sequence[int]) -> np.ndarray:
     """Left-multiplies the given axes of the wf tensor by the given gate matrix.
 
@@ -102,7 +117,8 @@ def targeted_tensordot(gate: np.ndarray, wf: np.ndarray, wf_target_inds: Sequenc
 
     # the indices we want to sum over are the final half
     gate_inds = np.arange(gate_n_qubits, 2 * gate_n_qubits)
-    assert len(wf_target_inds) == len(gate_inds), (wf_target_inds, gate_inds)
+    if len(wf_target_inds) != len(gate_inds):
+        raise ValueError(f"Length mismatch: wf_target_inds={wf_target_inds}, gate_inds={gate_inds}")
     wf = np.tensordot(gate, wf, (gate_inds, wf_target_inds))
 
     # tensordot dumps "output" indices into 0, 1, .. gate_n_qubits
@@ -120,16 +136,21 @@ def targeted_tensordot(gate: np.ndarray, wf: np.ndarray, wf_target_inds: Sequenc
     where_td_put_them = where_td_put_them[sorty]
     sorted_targets = np.asarray(wf_target_inds)[sorty]
     # now that everything is sorted, we can do the insertion.
-    for target_ind, from_ind in zip(sorted_targets, where_td_put_them):
+    for target_ind, from_ind in zip(sorted_targets, where_td_put_them, strict=False):
         axes_ordering.insert(target_ind, from_ind)
 
     # A quick call to transpose gives us the right thing.
     return wf.transpose(axes_ordering)
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
 def get_measure_probabilities(wf: np.ndarray, qubit: int) -> np.ndarray:
-    """
-    Get the probabilities of measuring a qubit.
+    """Get the probabilities of measuring a qubit.
 
     :param wf: The statevector with a dimension for each qubit
     :param qubit: The qubit to measure. We will sum over every axis except this one.
@@ -141,7 +162,7 @@ def get_measure_probabilities(wf: np.ndarray, qubit: int) -> np.ndarray:
     return np.einsum(np.conj(wf), all_inds, wf, all_inds, [int(qubit)])  # type: ignore
 
 
-def _get_gate_tensor_and_qubits(gate: Gate) -> Tuple[np.ndarray, List[int]]:
+def _get_gate_tensor_and_qubits(gate: Gate) -> tuple[np.ndarray, list[int]]:
     """Given a gate ``Instruction``, turn it into a matrix and extract qubit indices.
 
     :param gate: the instruction
@@ -152,7 +173,7 @@ def _get_gate_tensor_and_qubits(gate: Gate) -> Tuple[np.ndarray, List[int]]:
     else:
         matrix = QUANTUM_GATES[gate.name]
 
-    qubit_inds = [q.index for q in gate.qubits]
+    qubit_inds = gate.get_qubit_indices()
 
     # e.g. 2-qubit matrix is 4x4; turns into (2,2,2,2) tensor.
     tensor = np.reshape(matrix, (2,) * len(qubit_inds) * 2)
@@ -164,7 +185,8 @@ def _term_expectation(wf: np.ndarray, term: PauliTerm) -> Any:
     # Computes <psi|XYZ..XXZ|psi>
     wf2 = wf
     for qubit_i, op_str in term._ops.items():
-        assert isinstance(qubit_i, int)
+        if not isinstance(qubit_i, int):
+            raise ValueError("Only PauliTerms with integer qubits are supported.")
         # Re-use QUANTUM_GATES since it has X, Y, Z
         op_mat = QUANTUM_GATES[op_str]
         wf2 = targeted_tensordot(gate=op_mat, wf=wf2, wf_target_inds=[qubit_i])
@@ -174,10 +196,18 @@ def _term_expectation(wf: np.ndarray, term: PauliTerm) -> Any:
     return cast(complex, term.coefficient) * np.tensordot(wf.conj(), wf2, axes=len(wf.shape))
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=(
+        "To be removed in pyQuil v5, where PureStateVectorSimulator computes a program's "
+        f"state instead (DensityMatrixSimulator, for programs with measurements or noise). {QUAX_REPLACEMENT_NOTE}"
+    ),
+    category=PyQuilDeprecationWarning,
+)
 class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
-    def __init__(self, n_qubits: int, rs: Optional[RandomState] = None):
-        """
-        A wavefunction simulator that uses numpy's tensordot or einsum to update a state vector
+    def __init__(self, n_qubits: int, rs: RandomState | None = None):
+        """Initialize a wavefunction simulator that uses numpy's tensordot or einsum to update a state vector.
 
         Please consider using
         :py:class:`PyQVM(..., quantum_simulator_type=NumpyWavefunctionSimulator)` rather
@@ -191,8 +221,6 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         :param rs: a RandomState (should be shared with the owning :py:class:`PyQVM`) for
             doing anything stochastic. A value of ``None`` disallows doing anything stochastic.
         """
-        super().__init__(n_qubits=n_qubits, rs=rs)
-
         self.n_qubits = n_qubits
         self.rs = rs
 
@@ -200,8 +228,7 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         self.wf[(0,) * n_qubits] = complex(1.0, 0)
 
     def sample_bitstrings(self, n_samples: int) -> np.ndarray:
-        """
-        Sample bitstrings from the distribution defined by the wavefunction.
+        """Sample bitstrings from the distribution defined by the wavefunction.
 
         Qubit 0 is at ``out[:, 0]``.
 
@@ -219,12 +246,11 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         # reminder: qubit 0 is on the left in einsum simulator.
         probabilities = np.abs(self.wf.reshape(-1)) ** 2
         possible_bitstrings = all_bitstrings(self.n_qubits)
-        inds = self.rs.choice(2 ** self.n_qubits, n_samples, p=probabilities)
-        return possible_bitstrings[inds, :]  # type: ignore
+        inds = self.rs.choice(2**self.n_qubits, n_samples, p=probabilities)
+        return possible_bitstrings[inds, :]
 
     def do_measurement(self, qubit: int) -> int:
-        """
-        Measure a qubit, collapse the wavefunction, and return the measurement result.
+        """Measure a qubit, collapse the wavefunction, and return the measurement result.
 
         :param qubit: Index of the qubit to measure.
         :return: measured bit
@@ -252,8 +278,7 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         return measured_bit
 
     def do_gate(self, gate: Gate) -> "NumpyWavefunctionSimulator":
-        """
-        Perform a gate.
+        """Perform a gate.
 
         :return: ``self`` to support method chaining.
         """
@@ -265,8 +290,7 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         return self
 
     def do_gate_matrix(self, matrix: np.ndarray, qubits: Sequence[int]) -> "NumpyWavefunctionSimulator":
-        """
-        Apply an arbitrary unitary; not necessarily a named gate.
+        """Apply an arbitrary unitary; not necessarily a named gate.
 
         :param matrix: The unitary matrix to apply. No checks are done
         :param qubits: A list of qubits to apply the unitary to.
@@ -281,9 +305,8 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         self.wf = targeted_tensordot(gate=tensor, wf=self.wf, wf_target_inds=qubits)
         return self
 
-    def expectation(self, operator: Union[PauliTerm, PauliSum]) -> float:
-        """
-        Compute the expectation of an operator.
+    def expectation(self, operator: PauliTerm | PauliSum) -> float:
+        """Compute the expectation of an operator.
 
         :param operator: The operator
         :return: The operator's expectation value
@@ -291,11 +314,10 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         if not isinstance(operator, PauliSum):
             operator = PauliSum([operator])
 
-        return sum(_term_expectation(self.wf, term) for term in operator)
+        return sum(_term_expectation(self.wf, term) for term in operator)  # type: ignore
 
     def reset(self) -> "NumpyWavefunctionSimulator":
-        """
-        Reset the wavefunction to the ``|000...00>`` state.
+        """Reset the wavefunction to the ``|000...00>`` state.
 
         :return: ``self`` to support method chaining.
         """
@@ -303,5 +325,5 @@ class NumpyWavefunctionSimulator(AbstractQuantumSimulator):
         self.wf[(0,) * self.n_qubits] = complex(1.0, 0)
         return self
 
-    def do_post_gate_noise(self, noise_type: str, noise_prob: float, qubits: List[int]) -> "AbstractQuantumSimulator":
+    def do_post_gate_noise(self, noise_type: str, noise_prob: float, qubits: list[int]) -> "AbstractQuantumSimulator":
         raise NotImplementedError("The numpy simulator cannot handle noise")

@@ -13,44 +13,41 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
-from typing import List, Optional, Sequence, cast
+from collections.abc import Sequence
+from typing import cast
 
-from qcs_api_client.client import QCSClientConfiguration
-
-from pyquil.api._abstract_compiler import AbstractBenchmarker
-from pyquil.api._compiler_client import (
-    GenerateRandomizedBenchmarkingSequenceRequest,
-    ConjugatePauliByCliffordRequest,
-    CompilerClient,
+from qcs_sdk import QCSClient
+from qcs_sdk.compiler.quilc import (
+    ConjugateByCliffordRequest,
+    RandomizedBenchmarkingRequest,
+)
+from qcs_sdk.compiler.quilc import (
+    PauliTerm as QuilcPauliTerm,
 )
 
+from pyquil.api._abstract_compiler import AbstractBenchmarker
+from pyquil.api._compiler_client import CompilerClient
 from pyquil.paulis import PauliTerm, is_identity
-from pyquil.quil import address_qubits, Program
+from pyquil.quil import Program, address_qubits
 from pyquil.quilbase import Gate
 
 
 class BenchmarkConnection(AbstractBenchmarker):
-    """
-    Represents a connection to a server that generates benchmarking data.
-    """
+    """Represents a connection to a server that generates benchmarking data."""
 
-    def __init__(self, *, timeout: float = 10.0, client_configuration: Optional[QCSClientConfiguration] = None):
-        """
-        Client to communicate with the benchmarking data endpoint.
+    def __init__(self, *, timeout: float = 10.0, client_configuration: QCSClient | None = None):
+        """Client to communicate with the benchmarking data endpoint.
 
         :param timeout: Time limit for requests, in seconds.
         :param client_configuration: Optional client configuration. If none is provided, a default one will be loaded.
         """
-
         self._compiler_client = CompilerClient(
-            client_configuration=client_configuration or QCSClientConfiguration.load(),
+            client_configuration=client_configuration or QCSClient.load(),
             request_timeout=timeout,
         )
 
     def apply_clifford_to_pauli(self, clifford: Program, pauli_in: PauliTerm) -> PauliTerm:
-        r"""
-        Given a circuit that consists only of elements of the Clifford group,
-        return its action on a PauliTerm.
+        r"""Given a circuit that consists only of elements of the Clifford group, return its action on a PauliTerm.
 
         In particular, for Clifford C, and Pauli P, this returns the PauliTerm
         representing CPC^{\dagger}.
@@ -63,21 +60,23 @@ class BenchmarkConnection(AbstractBenchmarker):
         if is_identity(pauli_in):
             return pauli_in
 
-        indices_and_terms = list(zip(*list(pauli_in.operations_as_set())))
+        indices_and_terms = list(zip(*list(pauli_in.operations_as_set()), strict=False))
 
-        request = ConjugatePauliByCliffordRequest(
-            pauli_indices=list(indices_and_terms[0]),
-            pauli_symbols=list(indices_and_terms[1]),
+        request = ConjugateByCliffordRequest(
+            pauli=QuilcPauliTerm(
+                indices=list(indices_and_terms[0]),
+                symbols=list(indices_and_terms[1]),
+            ),
             clifford=clifford.out(calibrations=False),
         )
         response = self._compiler_client.conjugate_pauli_by_clifford(request)
 
-        phase_factor, paulis = response.phase_factor, response.pauli
+        phase_factor, paulis = response.phase, response.pauli
 
-        pauli_out = PauliTerm("I", 0, 1.0j ** phase_factor)
+        pauli_out = PauliTerm("I", 0, 1.0j**phase_factor)
         clifford_qubits = clifford.get_qubits()
         pauli_qubits = pauli_in.get_qubits()
-        all_qubits = sorted(set(cast(List[int], pauli_qubits)).union(set(cast(List[int], clifford_qubits))))
+        all_qubits = sorted(set(cast(list[int], pauli_qubits)).union(set(cast(list[int], clifford_qubits))))
         # The returned pauli will have specified its value on all_qubits, sorted by index.
         #  This is maximal set of qubits that can be affected by this conjugation.
         for i, pauli in enumerate(paulis):
@@ -88,12 +87,12 @@ class BenchmarkConnection(AbstractBenchmarker):
         self,
         depth: int,
         gateset: Sequence[Gate],
-        seed: Optional[int] = None,
-        interleaver: Optional[Program] = None,
-    ) -> List[Program]:
-        """
-        Construct a randomized benchmarking experiment on the given qubits, decomposing into
-        gateset. If interleaver is not provided, the returned sequence will have the form
+        seed: int | None = None,
+        interleaver: Program | None = None,
+    ) -> list[Program]:
+        """Construct a randomized benchmarking experiment on the given qubits, decomposing into gateset.
+
+        If interleaver is not provided, the returned sequence will have the form
 
             C_1 C_2 ... C_(depth-1) C_inv ,
 
@@ -120,22 +119,22 @@ class BenchmarkConnection(AbstractBenchmarker):
          programs are called cliffords then `sum(cliffords, Program())` will give the randomized
          benchmarking experiment, which will compose to the identity program.
         """
-
         # Support QubitPlaceholders: we temporarily index to arbitrary integers.
         # `generate_rb_sequence` handles mapping back to the original gateset gates.
-        gateset_as_program = address_qubits(sum(gateset, Program()))
+        gateset_as_program = address_qubits(sum(gateset, Program()))  # type: ignore
         qubits = len(gateset_as_program.get_qubits())
         gateset_for_api = gateset_as_program.out().splitlines()
-        interleaver_out: Optional[str] = None
+        interleaver_out: str | None = None
         if interleaver:
-            assert isinstance(interleaver, Program)
+            if not isinstance(interleaver, Program):
+                raise ValueError("interleaver must be a Program")
             interleaver_out = interleaver.out(calibrations=False)
 
         depth = int(depth)  # needs to be jsonable, no np.int64 please!
 
-        request = GenerateRandomizedBenchmarkingSequenceRequest(
+        request = RandomizedBenchmarkingRequest(
             depth=depth,
-            num_qubits=qubits,
+            qubits=qubits,
             gateset=gateset_for_api,
             seed=seed,
             interleaver=interleaver_out,
@@ -146,7 +145,7 @@ class BenchmarkConnection(AbstractBenchmarker):
         for clifford in response.sequence:
             clifford_program = Program()
             if interleaver:
-                clifford_program._calibrations = interleaver.calibrations
+                clifford_program += interleaver.calibrations
             # Like below, we reversed the order because the API currently hands back the Clifford
             # decomposition right-to-left.
             for index in reversed(clifford):

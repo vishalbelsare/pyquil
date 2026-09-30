@@ -13,44 +13,68 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
-"""
-Sub-package for facilitating connections to the QVM / QPU.
+"""Sub-package for facilitating connections to the QVM / QPU.
+
+.. deprecated:: PENDING_DEPRECATION_RELEASE
+    :py:class:`QVM`, :py:class:`QVMCompiler` and :py:class:`WavefunctionSimulator`, along with
+    getting a QVM-backed quantum computer from :py:func:`get_qc`, are deprecated. They will be
+    removed in pyQuil v5 in favor of the Quax-based simulators. They are already in pyQuil v4, but
+    private and experimental (see the :ref:`simulation architecture documentation
+    <simulation_architecture>`), so we recommend continuing to use the deprecated APIs until you
+    upgrade to pyQuil v5.
 """
 
-__all__ = [
-    "AbstractCompiler",
-    "BenchmarkConnection",
-    "EncryptedProgram",
-    "EngagementManager",
-    "get_qc",
-    "list_quantum_computers",
-    "local_forest_runtime",
-    "QAM",
-    "QAMExecutionResult",
-    "QCSClientConfiguration",
-    "QCSQuantumProcessor",
-    "QPU",
-    "QPUCompiler",
-    "QuantumComputer",
-    "QuantumExecutable",
-    "QVM",
-    "QVMCompiler",
-    "WavefunctionSimulator",
-]
-
-from qcs_api_client.client import QCSClientConfiguration
+from qcs_sdk import QCSClient, RegisterMatrixConversionError
+from qcs_sdk.qpu import RawQPUReadoutData
+from qcs_sdk.qpu.api import ConnectionStrategy, ExecutionOptions, ExecutionOptionsBuilder
+from qcs_sdk.qvm import RawQVMReadoutData
 
 from pyquil.api._benchmark import BenchmarkConnection
-from pyquil.api._compiler import QVMCompiler, QPUCompiler, QuantumExecutable, EncryptedProgram, AbstractCompiler
-from pyquil.api._engagement_manager import EngagementManager
-from pyquil.api._qam import QAM, QAMExecutionResult
-from pyquil.api._qpu import QPU
+from pyquil.api._compiler import (
+    AbstractCompiler,
+    EncryptedProgram,
+    QPUCompiler,
+    QPUCompilerAPIOptions,
+    QuantumExecutable,
+    QVMCompiler,
+)
+from pyquil.api._qam import QAM, MemoryMap, QAMExecutionResult
+from pyquil.api._qpu import QPU, QPUExecuteResponse
 from pyquil.api._quantum_computer import (
     QuantumComputer,
-    list_quantum_computers,
     get_qc,
+    list_quantum_computers,
     local_forest_runtime,
 )
 from pyquil.api._qvm import QVM
 from pyquil.api._wavefunction_simulator import WavefunctionSimulator
 from pyquil.quantum_processor import QCSQuantumProcessor
+
+__all__ = [
+    "QCSClient",
+    "RegisterMatrixConversionError",
+    "RawQPUReadoutData",
+    "RawQVMReadoutData",
+    "ConnectionStrategy",
+    "ExecutionOptions",
+    "BenchmarkConnection",
+    "AbstractCompiler",
+    "EncryptedProgram",
+    "QPUCompiler",
+    "QPUCompilerAPIOptions",
+    "QuantumExecutable",
+    "QVMCompiler",
+    "QAM",
+    "MemoryMap",
+    "QAMExecutionResult",
+    "QPU",
+    "QPUExecuteResponse",
+    "QuantumComputer",
+    "get_qc",
+    "list_quantum_computers",
+    "local_forest_runtime",
+    "QVM",
+    "WavefunctionSimulator",
+    "QCSQuantumProcessor",
+    "ExecutionOptionsBuilder",
+]

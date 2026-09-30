@@ -4,23 +4,23 @@ import numpy as np
 import pytest
 
 from pyquil import Program
-from pyquil.gates import CCNOT, CNOT, H, MEASURE, RX, X
-from pyquil.paulis import sZ, sX
+from pyquil.gates import CCNOT, CNOT, MEASURE, RX, H, X
+from pyquil.paulis import sX, sZ
 from pyquil.pyqvm import PyQVM
 from pyquil.quilatom import MemoryReference
 from pyquil.quilbase import Declare, DefGate
 from pyquil.simulation._numpy import (
-    targeted_einsum,
     NumpyWavefunctionSimulator,
-    all_bitstrings,
-    targeted_tensordot,
     _term_expectation,
+    all_bitstrings,
+    targeted_einsum,
+    targeted_tensordot,
 )
 from pyquil.simulation._reference import ReferenceWavefunctionSimulator
 from pyquil.simulation.matrices import QUANTUM_GATES as GATES
 from test.unit.test_reference_wavefunction import (
-    _generate_random_program,
     _generate_random_pauli,
+    _generate_random_program,
 )
 
 
@@ -190,8 +190,6 @@ def test_expectation_vs_ref_qvm(n_qubits):
     for _ in range(20):
         prog = _generate_random_program(n_qubits=n_qubits, length=10)
         operator = _generate_random_pauli(n_qubits=n_qubits, n_terms=5)
-        print(prog)
-        print(operator)
 
         ref_wf = ReferenceWavefunctionSimulator(n_qubits=n_qubits).do_program(prog)
         ref_exp = ref_wf.expectation(operator=operator)
@@ -222,7 +220,7 @@ def test_defgate():
     p += U_test(1, 0)
     qam = PyQVM(n_qubits=2, quantum_simulator_type=NumpyWavefunctionSimulator)
     qam.execute(p)
-    wf1 = qam.wf_simulator.wf
+    wf1 = qam.wf_simulator.wf.astype(np.complex128)
     should_be = np.zeros((2, 2), dtype=np.complex128)
     one_over_sqrt2 = 1 / np.sqrt(2)
     should_be[0, 1] = one_over_sqrt2
@@ -268,11 +266,14 @@ def kron(*matrices: np.ndarray) -> np.ndarray:
     A *args version of lambda args: functools.reduce(np.kron, args).
 
     Args:
+    ----
         *matrices: The matrices and controls to combine with the kronecker
             product.
 
     Returns:
+    -------
         The resulting matrix.
+
     """
     product = np.eye(1)
     for m in matrices:

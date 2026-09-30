@@ -1,23 +1,22 @@
 import numpy as np
 
 from pyquil import Program
-from pyquil.experiment._main import _remove_reset_from_program, _pauli_to_product_state
+from pyquil.experiment import (
+    Experiment,
+    ExperimentSetting,
+    TensorProductState,
+    plusZ,
+    read_json,
+    to_json,
+)
+from pyquil.experiment._main import _pauli_to_product_state, _remove_reset_from_program
 from pyquil.experiment._program import (
     parameterized_readout_symmetrization,
     parameterized_single_qubit_measurement_basis,
     parameterized_single_qubit_state_preparation,
 )
-from pyquil.experiment import (
-    ExperimentSetting,
-    TensorProductState,
-    Experiment,
-    plusZ,
-    read_json,
-    to_json,
-)
 from pyquil.gates import MEASURE, RESET, X, Y
 from pyquil.paulis import sI, sX, sY, sZ
-
 
 EXPERIMENT_REPR = """
 shots: 1
@@ -71,7 +70,7 @@ def test_tomo_experiment_pre_grouped():
 def test_tomo_experiment_empty():
     suite = Experiment([], program=Program(X(0)))
     assert len(suite) == 0
-    assert str(suite.program) == "X 0\n"
+    assert suite.program.out() == "X 0\n"
 
 
 def test_experiment_deser(tmpdir):
@@ -99,21 +98,12 @@ DEFGATE XGATE:
 """
 
 
-TRIMMED_PROG = """
-DEFGATE XGATE:
-    0, 1
-    1, 0
-
-X 0
-"""
-
-
-def test_remove_reset_from_program():
+def test_remove_reset_from_program(snapshot):
     p = Program(DEFGATE_X)
     p += RESET()
     p += X(0)
     new_p = _remove_reset_from_program(p)
-    assert "\n" + new_p.out() == TRIMMED_PROG
+    assert new_p.out() == snapshot
 
 
 def test_generate_experiment_program():

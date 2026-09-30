@@ -1,28 +1,37 @@
-from qcs_api_client.models import InstructionSetArchitecture, Characteristic, Operation
-from pyquil.external.rpcq import CompilerISA, add_edge, add_qubit, get_qubit, get_edge
+"""Transforms a QCS ``InstructionSetArchitecture`` into a ``CompilerISA``."""
+
+from collections import defaultdict
+from collections.abc import Sequence
+from typing import cast
+
 import numpy as np
+from qcs_sdk.qpu.isa import Characteristic, InstructionSetArchitecture, Operation
+
 from pyquil.external.rpcq import (
+    CompilerISA,
     GateInfo,
     MeasureInfo,
     Supported1QGate,
     Supported2QGate,
+    add_edge,
+    add_qubit,
+    get_edge,
+    get_qubit,
     make_edge_id,
 )
-from typing import List, Union, cast, DefaultDict, Set
-from collections import defaultdict
 
 
 class QCSISAParseError(ValueError):
-    """
-    Signals an error when creating a ``CompilerISA`` due to the operators
-    in the QCS ``InstructionSetArchitecture``. This may raise as a consequence
-    of unsupported gates as well as missing nodes or edges.
+    """Signals an error when creating a ``CompilerISA`` due to the operators in the QCS ``InstructionSetArchitecture``.
+
+    This may raise as a consequence of unsupported gates as well as missing nodes or edges.
     """
 
     pass
 
 
 def qcs_isa_to_compiler_isa(isa: InstructionSetArchitecture) -> CompilerISA:
+    """Transform a QCS ``InstructionSetArchitecture`` into a ``CompilerISA``."""
     device = CompilerISA()
     for node in isa.architecture.nodes:
         add_qubit(device, node.node_id)
@@ -30,20 +39,19 @@ def qcs_isa_to_compiler_isa(isa: InstructionSetArchitecture) -> CompilerISA:
     for edge in isa.architecture.edges:
         add_edge(device, edge.node_ids[0], edge.node_ids[1])
 
-    qubit_operations_seen: DefaultDict[int, Set[str]] = defaultdict(set)
-    edge_operations_seen: DefaultDict[str, Set[str]] = defaultdict(set)
+    qubit_operations_seen: defaultdict[int, set[str]] = defaultdict(set)
+    edge_operations_seen: defaultdict[str, set[str]] = defaultdict(set)
     for operation in isa.instructions:
         for site in operation.sites:
             if operation.node_count == 1:
                 if len(site.node_ids) != 1:
                     raise QCSISAParseError(
-                        f"operation {operation.name} has node count 1, but " f"site has {len(site.node_ids)} node_ids"
+                        f"operation {operation.name} has node count 1, but site has {len(site.node_ids)} node_ids"
                     )
                 operation_qubit = get_qubit(device, site.node_ids[0])
                 if operation_qubit is None:
                     raise QCSISAParseError(
-                        f"operation {operation.name} has node {site.node_ids[0]} "
-                        "but node not declared in architecture"
+                        f"operation {operation.name} has node {site.node_ids[0]} but node not declared in architecture"
                     )
 
                 if operation.name in qubit_operations_seen[operation_qubit.id]:
@@ -62,7 +70,7 @@ def qcs_isa_to_compiler_isa(isa: InstructionSetArchitecture) -> CompilerISA:
             elif operation.node_count == 2:
                 if len(site.node_ids) != 2:
                     QCSISAParseError(
-                        f"operation {operation.name} has node count 2, but site " f"has {len(site.node_ids)} node_ids"
+                        f"operation {operation.name} has node count 2, but site has {len(site.node_ids)} node_ids"
                     )
 
                 operation_edge = get_edge(device, site.node_ids[0], site.node_ids[1])
@@ -80,7 +88,7 @@ def qcs_isa_to_compiler_isa(isa: InstructionSetArchitecture) -> CompilerISA:
                 operation_edge.gates.extend(_transform_edge_operation_to_gates(operation.name, site.characteristics))
 
             else:
-                raise QCSISAParseError("unexpected operation node count: {}".format(operation.node_count))
+                raise QCSISAParseError(f"unexpected operation node count: {operation.node_count}")
     for qubit in device.qubits.values():
         if len(qubit.gates) == 0:
             qubit.dead = True
@@ -114,7 +122,7 @@ _operation_names_to_compiler_duration_default = {
 }
 
 
-def _make_measure_gates(node_id: int, characteristics: List[Characteristic]) -> List[MeasureInfo]:
+def _make_measure_gates(node_id: int, characteristics: Sequence[Characteristic]) -> list[MeasureInfo]:
     duration = _operation_names_to_compiler_duration_default[Supported1QGate.MEASURE]
     fidelity = _operation_names_to_compiler_fidelity_default[Supported1QGate.MEASURE]
     for characteristic in characteristics:
@@ -140,8 +148,9 @@ def _make_measure_gates(node_id: int, characteristics: List[Characteristic]) -> 
     ]
 
 
-def _make_rx_gates(node_id: int, benchmarks: List[Operation]) -> List[GateInfo]:
+def _make_rx_gates(node_id: int, benchmarks: Sequence[Operation]) -> list[GateInfo]:
     default_duration = _operation_names_to_compiler_duration_default[Supported1QGate.RX]
+    default_fidelity = _operation_names_to_compiler_fidelity_default[Supported1QGate.RX]
 
     gates = [
         GateInfo(
@@ -154,6 +163,8 @@ def _make_rx_gates(node_id: int, benchmarks: List[Operation]) -> List[GateInfo]:
     ]
 
     fidelity = _get_frb_sim_1q(node_id, benchmarks)
+    if fidelity is None:
+        fidelity = default_fidelity
     for param in [np.pi, -np.pi, np.pi / 2, -np.pi / 2]:
         gates.append(
             GateInfo(
@@ -167,7 +178,7 @@ def _make_rx_gates(node_id: int, benchmarks: List[Operation]) -> List[GateInfo]:
     return gates
 
 
-def _make_rz_gates(node_id: int, benchmarks: List[Operation]) -> List[GateInfo]:
+def _make_rz_gates(node_id: int) -> list[GateInfo]:
     return [
         GateInfo(
             operator=Supported1QGate.RZ,
@@ -179,12 +190,12 @@ def _make_rz_gates(node_id: int, benchmarks: List[Operation]) -> List[GateInfo]:
     ]
 
 
-def _get_frb_sim_1q(node_id: int, benchmarks: List[Operation]) -> float:
+def _get_frb_sim_1q(node_id: int, benchmarks: Sequence[Operation]) -> float | None:
     frb_sim_1q = next(
         (benchmark for benchmark in benchmarks if benchmark.name == "randomized_benchmark_simultaneous_1q"), None
     )
     if frb_sim_1q is None:
-        raise ValueError('benchmarks do not include "randomized_benchmark_simultaneous_1q"')
+        return None
 
     site = next(
         (
@@ -197,12 +208,12 @@ def _get_frb_sim_1q(node_id: int, benchmarks: List[Operation]) -> float:
         None,
     )
     if site is None:
-        raise ValueError(f"randomized_benchmark_simultaneous_1q benchmarks do not include node {node_id}")
+        return None
 
     return site.value
 
 
-def _make_wildcard_1q_gates(node_id: int) -> List[GateInfo]:
+def _make_wildcard_1q_gates(node_id: int) -> list[GateInfo]:
     return [
         GateInfo(
             operator="_",
@@ -217,27 +228,27 @@ def _make_wildcard_1q_gates(node_id: int) -> List[GateInfo]:
 def _transform_qubit_operation_to_gates(
     operation_name: str,
     node_id: int,
-    characteristics: List[Characteristic],
-    benchmarks: List[Operation],
-) -> List[Union[GateInfo, MeasureInfo]]:
+    characteristics: Sequence[Characteristic],
+    benchmarks: Sequence[Operation],
+) -> list[GateInfo | MeasureInfo]:
     if operation_name == Supported1QGate.RX:
-        return cast(List[Union[GateInfo, MeasureInfo]], _make_rx_gates(node_id, benchmarks))
+        return cast(list[GateInfo | MeasureInfo], _make_rx_gates(node_id, benchmarks))
     elif operation_name == Supported1QGate.RZ:
-        return cast(List[Union[GateInfo, MeasureInfo]], _make_rz_gates(node_id, benchmarks))
+        return cast(list[GateInfo | MeasureInfo], _make_rz_gates(node_id))
     elif operation_name == Supported1QGate.MEASURE:
-        return cast(List[Union[GateInfo, MeasureInfo]], _make_measure_gates(node_id, characteristics))
+        return cast(list[GateInfo | MeasureInfo], _make_measure_gates(node_id, characteristics))
     elif operation_name == Supported1QGate.WILDCARD:
-        return cast(List[Union[GateInfo, MeasureInfo]], _make_wildcard_1q_gates(node_id))
+        return cast(list[GateInfo | MeasureInfo], _make_wildcard_1q_gates(node_id))
     elif operation_name in {"I", "RESET"}:
         return []
     else:
-        raise QCSISAParseError("Unsupported qubit operation: {}".format(operation_name))
+        raise QCSISAParseError(f"Unsupported qubit operation: {operation_name}")
 
 
-def _make_cz_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
+def _make_cz_gates(characteristics: Sequence[Characteristic]) -> list[GateInfo]:
     default_duration = _operation_names_to_compiler_duration_default[Supported2QGate.CZ]
-
     default_fidelity = _operation_names_to_compiler_fidelity_default[Supported2QGate.CZ]
+
     fidelity = default_fidelity
     for characteristic in characteristics:
         if characteristic.name == "fCZ":
@@ -255,10 +266,10 @@ def _make_cz_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
     ]
 
 
-def _make_iswap_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
+def _make_iswap_gates(characteristics: Sequence[Characteristic]) -> list[GateInfo]:
     default_duration = _operation_names_to_compiler_duration_default[Supported2QGate.ISWAP]
-
     default_fidelity = _operation_names_to_compiler_fidelity_default[Supported2QGate.ISWAP]
+
     fidelity = default_fidelity
     for characteristic in characteristics:
         if characteristic.name == "fISWAP":
@@ -276,10 +287,10 @@ def _make_iswap_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
     ]
 
 
-def _make_cphase_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
+def _make_cphase_gates(characteristics: Sequence[Characteristic]) -> list[GateInfo]:
     default_duration = _operation_names_to_compiler_duration_default[Supported2QGate.CPHASE]
-
     default_fidelity = _operation_names_to_compiler_fidelity_default[Supported2QGate.CPHASE]
+
     fidelity = default_fidelity
     for characteristic in characteristics:
         if characteristic.name == "fCPHASE":
@@ -297,10 +308,10 @@ def _make_cphase_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
     ]
 
 
-def _make_xy_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
+def _make_xy_gates(characteristics: Sequence[Characteristic]) -> list[GateInfo]:
     default_duration = _operation_names_to_compiler_duration_default[Supported2QGate.XY]
-
     default_fidelity = _operation_names_to_compiler_fidelity_default[Supported2QGate.XY]
+
     fidelity = default_fidelity
     for characteristic in characteristics:
         if characteristic.name == "fXY":
@@ -318,7 +329,7 @@ def _make_xy_gates(characteristics: List[Characteristic]) -> List[GateInfo]:
     ]
 
 
-def _make_wildcard_2q_gates() -> List[GateInfo]:
+def _make_wildcard_2q_gates() -> list[GateInfo]:
     return [
         GateInfo(
             operator="_",
@@ -332,8 +343,8 @@ def _make_wildcard_2q_gates() -> List[GateInfo]:
 
 def _transform_edge_operation_to_gates(
     operation_name: str,
-    characteristics: List[Characteristic],
-) -> List[GateInfo]:
+    characteristics: Sequence[Characteristic],
+) -> list[GateInfo]:
     if operation_name == Supported2QGate.CZ:
         return _make_cz_gates(characteristics)
     elif operation_name == Supported2QGate.ISWAP:
@@ -345,4 +356,4 @@ def _transform_edge_operation_to_gates(
     elif operation_name == Supported2QGate.WILDCARD:
         return _make_wildcard_2q_gates()
     else:
-        raise QCSISAParseError("Unsupported edge operation: {}".format(operation_name))
+        raise QCSISAParseError(f"Unsupported edge operation: {operation_name}")

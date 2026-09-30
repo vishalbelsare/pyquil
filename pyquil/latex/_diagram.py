@@ -15,41 +15,47 @@
 ##############################################################################
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Iterable, List, Sequence, Mapping, Optional, Set, Tuple, cast
+from typing import cast
 from warnings import warn
 
+from deprecated.sphinx import deprecated
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, PyQuilDeprecationWarning
 from pyquil.quil import Program
 from pyquil.quilatom import ParameterDesignator, QubitDesignator, format_parameter
 from pyquil.quilbase import (
     AbstractInstruction,
-    Wait,
-    ResetQubit,
-    JumpConditional,
-    JumpWhen,
-    JumpUnless,
-    Jump,
-    UnaryClassicalInstruction,
-    LogicalBinaryOp,
     ArithmeticBinaryOp,
-    ClassicalMove,
-    ClassicalExchange,
-    ClassicalConvert,
-    ClassicalLoad,
-    ClassicalStore,
     ClassicalComparison,
-    RawInstr,
-    Measurement,
+    ClassicalConvert,
+    ClassicalExchange,
+    ClassicalLoad,
+    ClassicalMove,
+    ClassicalStore,
     Gate,
+    Jump,
+    JumpUnless,
+    JumpWhen,
+    LogicalBinaryOp,
+    Measurement,
     Pragma,
+    ResetQubit,
+    UnaryClassicalInstruction,
+    Wait,
 )
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
 @dataclass
 class DiagramSettings:
-    """
-    Settings to control the layout and rendering of circuits.
-    """
+    """Settings to control the layout and rendering of circuits."""
 
     texify_numerical_constants: bool = True
     """
@@ -97,7 +103,6 @@ PRAGMA_END_GROUP = "END_LATEX_GATE_GROUP"
 
 UNSUPPORTED_INSTRUCTION_CLASSES = (
     Wait,
-    JumpConditional,
     JumpWhen,
     JumpUnless,
     Jump,
@@ -110,7 +115,6 @@ UNSUPPORTED_INSTRUCTION_CLASSES = (
     ClassicalLoad,
     ClassicalStore,
     ClassicalComparison,
-    RawInstr,
 )
 
 
@@ -118,11 +122,11 @@ UNSUPPORTED_INSTRUCTION_CLASSES = (
 
 
 def TIKZ_LEFT_KET(qubit: int) -> str:
-    return r"\lstick{{\ket{{q_{{{qubit}}}}}}}".format(qubit=qubit)
+    return rf"\lstick{{\ket{{q_{{{qubit}}}}}}}"
 
 
 def TIKZ_CONTROL(control: int, offset: int) -> str:
-    return r"\ctrl{{{offset}}}".format(offset=offset)
+    return rf"\ctrl{{{offset}}}"
 
 
 def TIKZ_CNOT_TARGET() -> str:
@@ -134,7 +138,7 @@ def TIKZ_CPHASE_TARGET() -> str:
 
 
 def TIKZ_SWAP(source: int, offset: int) -> str:
-    return r"\swap{{{offset}}}".format(offset=offset)
+    return rf"\swap{{{offset}}}"
 
 
 def TIKZ_SWAP_TARGET() -> str:
@@ -149,32 +153,32 @@ def TIKZ_MEASURE() -> str:
     return r"\meter{}"
 
 
-def _format_parameter(param: ParameterDesignator, settings: Optional[DiagramSettings] = None) -> str:
-    formatted = format_parameter(param)
+def _format_parameter(param: ParameterDesignator, settings: DiagramSettings | None = None) -> str:
+    formatted: str = format_parameter(param)
     if settings and settings.texify_numerical_constants:
         formatted = formatted.replace("pi", r"\pi")
     return formatted
 
 
-def _format_parameters(params: Iterable[ParameterDesignator], settings: Optional[DiagramSettings] = None) -> str:
+def _format_parameters(params: Iterable[ParameterDesignator], settings: DiagramSettings | None = None) -> str:
     return "(" + ",".join(_format_parameter(param, settings) for param in params) + ")"
 
 
 def TIKZ_GATE(
     name: str,
     size: int = 1,
-    params: Optional[Sequence[ParameterDesignator]] = None,
+    params: Sequence[ParameterDesignator] | None = None,
     dagger: bool = False,
-    settings: Optional[DiagramSettings] = None,
+    settings: DiagramSettings | None = None,
 ) -> str:
     cmd = r"\gate"
     rotations = ["RX", "RY", "RZ"]
     if settings and settings.abbreviate_controlled_rotations and name in rotations and params:
-        name = name[1] + "_{{{param}}}".format(param=_format_parameter(params[0], settings))
-        return cmd + "{{{name}}}".format(name=name)
+        name = name[1] + f"_{{{_format_parameter(params[0], settings)}}}"
+        return cmd + f"{{{name}}}"
     # now, handle the general case
     if size > 1:
-        cmd += "[wires={size}]".format(size=size)
+        cmd += f"[wires={size}]"
     # TeXify names
     if name in ["RX", "RY", "RZ"]:
         name = name[0] + "_" + name[1].lower()
@@ -182,14 +186,14 @@ def TIKZ_GATE(
         name += r"^{\dagger}"
     if params:
         name += _format_parameters(params, settings)
-    return cmd + "{{{name}}}".format(name=name)
+    return cmd + f"{{{name}}}"
 
 
 def TIKZ_GATE_GROUP(qubits: Sequence[int], width: int, label: str) -> str:
     num_qubits = max(qubits) - min(qubits) + 1
     return (
-        "\\gategroup[{qubits},steps={width},style={{dashed, rounded corners,"
-        "fill=blue!20, inner xsep=2pt}}, background]{{{label}}}".format(qubits=num_qubits, width=width, label=label)
+        f"\\gategroup[{num_qubits},steps={width},style={{dashed, rounded corners,"
+        f"fill=blue!20, inner xsep=2pt}}, background]{{{label}}}"
     )
 
 
@@ -197,13 +201,17 @@ SOURCE_TARGET_OP = {
     "CNOT": (TIKZ_CONTROL, TIKZ_CNOT_TARGET),
     "SWAP": (TIKZ_SWAP, TIKZ_SWAP_TARGET),
     "CZ": (TIKZ_CONTROL, lambda: TIKZ_GATE("Z")),
-    "CPHASE": (TIKZ_CONTROL, TIKZ_CPHASE_TARGET),
 }
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
 class DiagramState:
-    """
-    A representation of a circuit diagram.
+    """A representation of a circuit diagram.
 
     This maintains an ordered list of qubits, and for each qubit a 'line': that is, a list of
     TikZ operators.
@@ -211,35 +219,25 @@ class DiagramState:
 
     def __init__(self, qubits: Sequence[int]):
         self.qubits = qubits
-        self.lines: Mapping[int, List[str]] = defaultdict(list)
+        self.lines: Mapping[int, list[str]] = defaultdict(list)
 
     def extend_lines_to_common_edge(self, qubits: Iterable[int], offset: int = 0) -> None:
-        """
-        Add NOP operations on the lines associated with the given qubits, until
-        all lines are of the same width.
-        """
+        """Add NOP operations on the lines associated with the given qubits, until all lines are of the same width."""
         max_width = max(self.width(q) for q in qubits) + offset
         for q in qubits:
             while self.width(q) < max_width:
                 self.append(q, TIKZ_NOP())
 
     def width(self, qubit: int) -> int:
-        """
-        The width of the diagram, in terms of the number of operations, on the
-        specified qubit line.
-        """
+        """Calculate the width of the diagram, in terms of the number of operations, on the specified qubit line."""
         return len(self.lines[qubit])
 
     def append(self, qubit: int, op: str) -> None:
-        """
-        Add an operation to the rightmost edge of the specified qubit line.
-        """
+        """Add an operation to the rightmost edge of the specified qubit line."""
         self.lines[qubit].append(op)
 
-    def append_diagram(self, diagram: "DiagramState", group: Optional[str] = None) -> "DiagramState":
-        """
-        Add all operations represented by the given diagram to their
-        corresponding qubit lines in this diagram.
+    def append_diagram(self, diagram: "DiagramState", group: str | None = None) -> "DiagramState":
+        """Add all operations represented by the given diagram to their corresponding qubit lines in this diagram.
 
         If group is not None, then a TIKZ_GATE_GROUP is created with the label indicated by group.
         """
@@ -264,38 +262,39 @@ class DiagramState:
             self.lines[corner_row][corner_col] += " " + TIKZ_GATE_GROUP(grouped_qubits, group_width, group)
         return self
 
-    def interval(self, low: int, high: int) -> List[int]:
-        """
-        All qubits in the diagram, from low to high, inclusive.
-        """
+    def interval(self, low: int, high: int) -> list[int]:
+        """All qubits in the diagram, from low to high, inclusive."""
         full_interval = range(low, high + 1)
         qubits = list(set(full_interval) & set(self.qubits))
         return sorted(qubits)
 
     def is_interval(self, qubits: Sequence[int]) -> bool:
-        """
-        Do the specified qubits correspond to an interval in this diagram?
-        """
+        """Return True if the specified qubits correspond to an interval in this diagram, False otherwise."""
         return qubits == self.interval(min(qubits), max(qubits))
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
 def split_on_terminal_measures(
     program: Program,
-) -> Tuple[List[AbstractInstruction], List[AbstractInstruction]]:
-    """
-    Split a program into two lists of instructions:
+) -> tuple[list[AbstractInstruction], list[AbstractInstruction]]:
+    """Split a program into two lists of instructions.
 
-    1. A set of measurement instructions occuring as the final operation on their qubit.
+    1. A set of measurement instructions occurring as the final operation on their qubit.
     2. The rest.
     """
     # handle the easy case explicitly (mainly to avoid warning when we can avoid it)
     if not any(isinstance(instr, Measurement) for instr in program.instructions):
         return [], program.instructions
 
-    seen_qubits: Set[QubitDesignator] = set()
+    seen_qubits: set[QubitDesignator] = set()
 
-    measures: List[AbstractInstruction] = []
-    remaining: List[AbstractInstruction] = []
+    measures: list[AbstractInstruction] = []
+    remaining: list[AbstractInstruction] = []
     in_group = False
     for instr in reversed(program.instructions):
         if not in_group and isinstance(instr, Measurement) and instr.qubit not in seen_qubits:
@@ -304,19 +303,27 @@ def split_on_terminal_measures(
         else:
             remaining.insert(0, instr)
             if isinstance(instr, (Gate, ResetQubit)):
-                seen_qubits |= instr.get_qubits()
+                seen_qubits |= set(instr.get_qubit_indices() or {})
             elif isinstance(instr, Pragma):
                 if instr.command == PRAGMA_END_GROUP:
-                    warn("Alignment of terminal MEASURE operations may" "conflict with gate group declaration.")
+                    warn(
+                        "Alignment of terminal MEASURE operations mayconflict with gate group declaration.",
+                        stacklevel=2,
+                    )
                     in_group = True
                 elif instr.command == PRAGMA_BEGIN_GROUP:
                     in_group = False
     return measures, remaining
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
 class DiagramBuilder:
-    """
-    Constructs DiagramStates from a given circuit and settings.
+    """Constructs DiagramStates from a given circuit and settings.
 
     This is essentially a state machine, represented by a few instance variables and some mutually
     recursive methods.
@@ -326,19 +333,17 @@ class DiagramBuilder:
         self.circuit = circuit
         self.settings = settings
         # instructions currently being processed
-        self.working_instructions: Optional[List[AbstractInstruction]] = None
+        self.working_instructions: list[AbstractInstruction] | None = None
         # index into working instructions. we maintain the invariant that
         # working_instructions[0:index] has been processed, with the diagram
         # updated accordingly
         self.index = 0
         # partially constructed diagram
-        self.diagram: Optional[DiagramState] = None
+        self.diagram: DiagramState | None = None
 
     def build(self) -> DiagramState:
-        """
-        Actually build the diagram.
-        """
-        qubits = cast(Set[int], self.circuit.get_qubits(indices=True))
+        """Build the diagram."""
+        qubits = cast(set[int], self.circuit.get_qubits(indices=True))
         all_qubits = range(min(qubits), max(qubits) + 1) if self.settings.impute_missing_qubits else sorted(qubits)
         self.diagram = DiagramState(all_qubits)
 
@@ -364,12 +369,12 @@ class DiagramBuilder:
             if isinstance(instr, Pragma) and instr.command == PRAGMA_BEGIN_GROUP:
                 self._build_group()
             elif isinstance(instr, Pragma) and instr.command == PRAGMA_END_GROUP:
-                raise ValueError("PRAGMA {} found without matching {}.".format(PRAGMA_END_GROUP, PRAGMA_BEGIN_GROUP))
+                raise ValueError(f"PRAGMA {PRAGMA_END_GROUP} found without matching {PRAGMA_BEGIN_GROUP}.")
             elif isinstance(instr, Measurement):
                 self._build_measure()
             elif isinstance(instr, Gate):
                 if "FORKED" in instr.modifiers:
-                    raise ValueError("LaTeX output does not currently support" "FORKED modifiers: {}.".format(instr))
+                    raise ValueError(f"LaTeX output does not currently support FORKED modifiers: {instr}.")
                 # the easy case is 1q operations
                 if len(instr.qubits) == 1:
                     self._build_1q_unitary()
@@ -379,9 +384,7 @@ class DiagramBuilder:
                     else:
                         self._build_generic_unitary()
             elif isinstance(instr, UNSUPPORTED_INSTRUCTION_CLASSES):
-                raise ValueError(
-                    "LaTeX output does not currently support" "the following instruction: {}".format(instr.out())
-                )
+                raise ValueError(f"LaTeX output does not currently support the following instruction: {instr.out()}")
             else:
                 self.index += 1
 
@@ -399,14 +402,15 @@ class DiagramBuilder:
         return self.diagram
 
     def _build_group(self) -> None:
-        """
-        Update the partial diagram with the subcircuit delimited by the grouping PRAGMA.
+        """Update the partial diagram with the subcircuit delimited by the grouping PRAGMA.
 
         Advances the index beyond the ending pragma.
         """
-        assert self.working_instructions is not None
+        if self.working_instructions is None:
+            raise RuntimeError("Internal error: working_instructions is None.")
         instr = self.working_instructions[self.index]
-        assert isinstance(instr, Pragma)
+        if not isinstance(instr, Pragma):
+            raise RuntimeError("Internal error: expected a PRAGMA instruction.")
         if len(instr.args) != 0:
             raise ValueError(f"PRAGMA {PRAGMA_BEGIN_GROUP} expected a freeform string, or nothing at all.")
         start = self.index + 1
@@ -420,39 +424,43 @@ class DiagramBuilder:
                 subcircuit = Program(*self.working_instructions[start:j])
                 block = DiagramBuilder(subcircuit, block_settings).build()
                 block_name = instr.freeform_string if instr.freeform_string else ""
-                assert self.diagram is not None
+                if self.diagram is None:
+                    raise RuntimeError("Internal error: expected diagram to exist.")
                 self.diagram.append_diagram(block, group=block_name)
                 # advance to the instruction following this one
                 self.index = j + 1
                 return
 
-        raise ValueError("Unable to find PRAGMA {} matching {}.".format(PRAGMA_END_GROUP, instr))
+        raise ValueError(f"Unable to find PRAGMA {PRAGMA_END_GROUP} matching {instr}.")
 
     def _build_measure(self) -> None:
-        """
-        Update the partial diagram with a measurement operation.
+        """Update the partial diagram with a measurement operation.
 
         Advances the index by one.
         """
-        assert self.working_instructions is not None
+        if self.working_instructions is None:
+            raise RuntimeError("Internal error: working_instructions is None.")
         instr = self.working_instructions[self.index]
-        assert isinstance(instr, Measurement)
-        assert self.diagram is not None
-        self.diagram.append(instr.qubit.index, TIKZ_MEASURE())
+        if not isinstance(instr, Measurement):
+            raise RuntimeError("Internal error: expected a Measurement instruction.")
+        if self.diagram is None:
+            raise RuntimeError("Internal error: expected diagram to exist.")
+        self.diagram.append(instr.get_qubit_indices().pop(), TIKZ_MEASURE())
         self.index += 1
 
     def _build_custom_source_target_op(self) -> None:
-        """
-        Update the partial diagram with a single operation involving a source and a target
-        (e.g. a controlled gate, a swap).
+        """Update the partial diagram with a single operation involving a source and a target (e.g. a controlled gate).
 
         Advances the index by one.
         """
-        assert self.working_instructions is not None
+        if self.working_instructions is None:
+            raise RuntimeError("Internal error: working_instructions is None.")
         instr = self.working_instructions[self.index]
-        assert isinstance(instr, Gate)
+        if not isinstance(instr, Gate):
+            raise RuntimeError("Internal error: expected a Gate instruction, got ({type(instr)}).")
         source, target = qubit_indices(instr)
-        assert self.diagram is not None
+        if self.diagram is None:
+            raise RuntimeError("Internal error: expected diagram to exist.")
         displaced = self.diagram.interval(min(source, target), max(source, target))
         self.diagram.extend_lines_to_common_edge(displaced)
         source_op, target_op = SOURCE_TARGET_OP[instr.name]
@@ -463,18 +471,19 @@ class DiagramBuilder:
         self.index += 1
 
     def _build_1q_unitary(self) -> None:
-        """
-        Update the partial diagram with a 1Q gate.
+        """Update the partial diagram with a 1Q gate.
 
         Advances the index by one.
         """
-        assert self.working_instructions is not None
+        if self.working_instructions is None:
+            raise RuntimeError("Internal error: working_instructions is None.")
         instr = self.working_instructions[self.index]
-        assert isinstance(instr, Gate)
+        if not isinstance(instr, Gate):
+            raise RuntimeError("Internal error: expected a Gate instruction, got ({type(instr)}).")
         qubits = qubit_indices(instr)
         dagger = sum(m == "DAGGER" for m in instr.modifiers) % 2 == 1
-
-        assert self.diagram is not None
+        if self.diagram is None:
+            raise RuntimeError("Internal error: expected diagram to exist.")
         self.diagram.append(
             qubits[0],
             TIKZ_GATE(instr.name, params=instr.params, dagger=dagger, settings=self.settings),
@@ -482,24 +491,25 @@ class DiagramBuilder:
         self.index += 1
 
     def _build_generic_unitary(self) -> None:
-        """
-        Update the partial diagram with a unitary operation.
+        """Update the partial diagram with a unitary operation.
 
         Advances the index by one.
         """
-        assert self.working_instructions is not None
+        if self.working_instructions is None:
+            raise RuntimeError("Internal error: working_instructions is None.")
         instr = self.working_instructions[self.index]
-        assert isinstance(instr, Gate)
+        if not isinstance(instr, Gate):
+            raise RuntimeError("Internal error: expected a Gate instruction, got ({type(instr)}).")
         qubits = qubit_indices(instr)
         dagger = sum(m == "DAGGER" for m in instr.modifiers) % 2 == 1
         controls = sum(m == "CONTROLLED" for m in instr.modifiers)
-
-        assert self.diagram is not None
+        if self.diagram is None:
+            raise RuntimeError("Internal error: expected diagram to exist.")
         self.diagram.extend_lines_to_common_edge(qubits)
-
         control_qubits = qubits[:controls]
-        target_qubits = qubits[controls:]
-        if not self.diagram.is_interval(sorted(target_qubits)):
+        # sort the target qubit list because the first qubit indicates wire placement on the diagram
+        target_qubits = sorted(qubits[controls:])
+        if not self.diagram.is_interval(target_qubits):
             raise ValueError(f"Unable to render instruction {instr} which targets non-adjacent qubits.")
 
         for q in control_qubits:
@@ -517,13 +527,15 @@ class DiagramBuilder:
         self.index += 1
 
 
-def qubit_indices(instr: AbstractInstruction) -> List[int]:
-    """
-    Get a list of indices associated with the given instruction.
-    """
-    if isinstance(instr, Measurement):
-        return [instr.qubit.index]
-    elif isinstance(instr, Gate):
-        return [qubit.index for qubit in instr.qubits]
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5, with no replacement in pyQuil.",
+    category=PyQuilDeprecationWarning,
+)
+def qubit_indices(instr: AbstractInstruction) -> list[int]:
+    """Get a list of indices associated with the given instruction."""
+    if isinstance(instr, (Measurement, Gate)):
+        return list(instr.get_qubit_indices())
     else:
         return []

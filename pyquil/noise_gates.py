@@ -1,16 +1,26 @@
-from pyquil.quilbase import Gate
-from pyquil.quilatom import Parameter, unpack_qubit
-from pyquil.external.rpcq import CompilerISA, Supported1QGate, Supported2QGate, GateInfo, Edge
-from typing import List, Optional
+"""Utility functions for generating noise gates compatible with a QVM's instruction set architecture."""
+
 import logging
+
+from deprecated.sphinx import deprecated
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, QUAX_REPLACEMENT_NOTE, PyQuilDeprecationWarning
+from pyquil.external.rpcq import CompilerISA, Edge, GateInfo, Supported1QGate, Supported2QGate
+from pyquil.quilatom import Parameter, unpack_qubit
+from pyquil.quilbase import Gate
 
 _log = logging.getLogger(__name__)
 THETA = Parameter("theta")
 
 
-def _get_qvm_noise_supported_gates(isa: CompilerISA) -> List[Gate]:
-    """
-    Generate the gate set associated with an ISA for which QVM noise is supported.
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5, along with the Kraus-map noise model. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
+def _get_qvm_noise_supported_gates(isa: CompilerISA) -> list[Gate]:
+    """Generate the gate set associated with an ISA for which QVM noise is supported.
 
     :param isa: The instruction set architecture for a QPU.
     :return: A list of Gate objects encapsulating all gates compatible with the ISA.
@@ -23,7 +33,9 @@ def _get_qvm_noise_supported_gates(isa: CompilerISA) -> List[Gate]:
             if gate.operator == Supported1QGate.MEASURE:
                 continue
 
-            assert isinstance(gate, GateInfo)
+            if not isinstance(gate, GateInfo):
+                raise ValueError(f"ISA contained {type(gate)} where a GateInfo was expected.")
+
             qvm_noise_supported_gate = _transform_rpcq_qubit_gate_info_to_qvm_noise_supported_gate(
                 qubit_id=q.id,
                 gate=gate,
@@ -41,7 +53,13 @@ def _get_qvm_noise_supported_gates(isa: CompilerISA) -> List[Gate]:
     return gates
 
 
-def _transform_rpcq_qubit_gate_info_to_qvm_noise_supported_gate(qubit_id: int, gate: GateInfo) -> Optional[Gate]:
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5, along with the Kraus-map noise model. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
+def _transform_rpcq_qubit_gate_info_to_qvm_noise_supported_gate(qubit_id: int, gate: GateInfo) -> Gate | None:
     if gate.operator == Supported1QGate.RX:
         if len(gate.parameters) == 1 and gate.parameters[0] == 0.0:
             return None
@@ -55,11 +73,17 @@ def _transform_rpcq_qubit_gate_info_to_qvm_noise_supported_gate(qubit_id: int, g
     if gate.operator == Supported1QGate.I:
         return Gate(Supported1QGate.I, [], [unpack_qubit(qubit_id)])
 
-    _log.warning("Unknown qubit gate operator: {}".format(gate.operator))
+    _log.warning(f"Unknown qubit gate operator: {gate.operator}")
     return None
 
 
-def _transform_rpcq_edge_gate_info_to_qvm_noise_supported_gates(edge: Edge) -> List[Gate]:
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason=f"To be removed in pyQuil v5, along with the Kraus-map noise model. {QUAX_REPLACEMENT_NOTE}",
+    category=PyQuilDeprecationWarning,
+)
+def _transform_rpcq_edge_gate_info_to_qvm_noise_supported_gates(edge: Edge) -> list[Gate]:
     operators = [gate.operator for gate in edge.gates]
     targets = [unpack_qubit(t) for t in edge.ids]
 
@@ -85,8 +109,8 @@ def _transform_rpcq_edge_gate_info_to_qvm_noise_supported_gates(edge: Edge) -> L
         return gates
 
     if Supported2QGate.WILDCARD in operators:
-        gates.append(Gate("_", "_", targets))
-        gates.append(Gate("_", "_", targets[::-1]))
+        gates.append(Gate("_", "_", targets))  # type: ignore
+        gates.append(Gate("_", "_", targets[::-1]))  # type: ignore
         return gates
 
     _log.warning(f"no gate for edge {edge.ids}")

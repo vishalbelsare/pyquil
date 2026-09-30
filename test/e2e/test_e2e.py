@@ -18,8 +18,8 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 
 from pyquil import Program
-from pyquil.api import QuantumComputer, QPU
-from pyquil.gates import H, CNOT, MEASURE, RX
+from pyquil.api import QPU, QuantumComputer
+from pyquil.gates import CNOT, MEASURE, RX, H
 from pyquil.quilatom import MemoryReference
 from pyquil.quilbase import Declare
 
@@ -50,8 +50,7 @@ def test_parametric_program(qc: QuantumComputer):
 
     all_results = []
     for theta in [0, np.pi, 2 * np.pi]:
-        compiled.write_memory(region_name="theta", value=theta)
-        results = qc.run(compiled).readout_data.get("ro")
+        results = qc.run(compiled, {"theta": [theta]}).readout_data.get("ro")
         all_results.append(np.mean(results))
 
     if isinstance(qc.qam, QPU):
@@ -66,10 +65,10 @@ def test_parametric_program(qc: QuantumComputer):
 
 def test_multithreading(qc: QuantumComputer):
     def run_program(
-            program: Program,
-            qc: QuantumComputer,
+        program: Program,
+        qc: QuantumComputer,
     ) -> np.ndarray:
-        return qc.run(qc.compile(program)).readout_data.get('ro')
+        return qc.run(qc.compile(program)).readout_data.get("ro")
 
     args = [(TEST_PROGRAM, qc) for _ in range(20)]
     with ThreadPool(10) as pool:

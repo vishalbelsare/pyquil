@@ -13,15 +13,21 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
+"""Definition of an ExperimentSetting.
+
+Each ExperimentSetting corresponds to preparing a collection of qubits in a TensorProductState and measuring them in a
+PauliTerm-defined basis.
 """
-Schema definition of an ExperimentSetting, which corresponds to preparing a collection of qubits
-in a TensorProductState and measuring them in a PauliTerm-defined basis.
-"""
+
 import logging
 import re
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import Any, FrozenSet, Generator, Iterable, List, Optional, cast
+from typing import Any, cast
 
+from deprecated.sphinx import deprecated
+
+from pyquil._deprecation import PENDING_DEPRECATION_RELEASE, PyQuilDeprecationWarning
 from pyquil.paulis import PauliTerm, sI
 
 log = logging.getLogger(__name__)
@@ -29,8 +35,7 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class _OneQState:
-    """
-    A description of a named one-qubit quantum state.
+    """A description of a named one-qubit quantum state.
 
     This can be used to generate pre-rotations for quantum process tomography. For example,
     X0_14 will generate the +1 eigenstate of the X operator on qubit 14. X1_14 will generate the
@@ -52,16 +57,19 @@ class _OneQState:
         return _OneQState(label=ma.group(1), index=int(ma.group(2)), qubit=int(ma.group(3)))
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 @dataclass(frozen=True)
 class TensorProductState:
-    """
-    A description of a multi-qubit quantum state that is a tensor product of many _OneQStates
-    states.
-    """
+    """A description of a multi-qubit quantum state that is a tensor product of many _OneQStates states."""
 
-    states: List[_OneQState]
+    states: list[_OneQState]
 
-    def __init__(self, states: Optional[Iterable[_OneQState]] = None):
+    def __init__(self, states: Iterable[_OneQState] | None = None):
         if states is None:
             states = []
         object.__setattr__(self, "states", list(states))
@@ -88,7 +96,7 @@ class TensorProductState:
     def __len__(self) -> int:
         return len(self.states)
 
-    def states_as_set(self) -> FrozenSet[_OneQState]:
+    def states_as_set(self) -> frozenset[_OneQState]:
         return frozenset(self.states)
 
     def __eq__(self, other: Any) -> bool:
@@ -107,54 +115,125 @@ class TensorProductState:
         return TensorProductState(list(_OneQState.from_str(x) for x in s.split("*")))
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def SIC0(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="SIC", index=0, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def SIC1(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="SIC", index=1, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def SIC2(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="SIC", index=2, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def SIC3(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="SIC", index=3, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def plusX(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="X", index=0, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def minusX(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="X", index=1, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def plusY(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="Y", index=0, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def minusY(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="Y", index=1, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def plusZ(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="Z", index=0, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def minusZ(q: int) -> TensorProductState:
     return TensorProductState([_OneQState(label="Z", index=1, qubit=q)])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 def zeros_state(qubits: Iterable[int]) -> TensorProductState:
     return TensorProductState([_OneQState(label="Z", index=0, qubit=q) for q in qubits])
 
 
+@deprecated(
+    version=PENDING_DEPRECATION_RELEASE,
+    line_length=0,
+    reason="To be removed in pyQuil v5 in favor of rigetti-qpu-hybrid-benchmark.",
+    category=PyQuilDeprecationWarning,
+)
 @dataclass(frozen=True, init=False)
 class ExperimentSetting:
-    """
-    Input and output settings for a tomography-like experiment.
+    """Input and output settings for a tomography-like experiment.
 
     Many near-term quantum algorithms take the following form:
 
@@ -174,13 +253,13 @@ class ExperimentSetting:
 
     in_state: TensorProductState
     out_operator: PauliTerm
-    additional_expectations: Optional[List[List[int]]] = None
+    additional_expectations: list[list[int]] | None = None
 
     def __init__(
         self,
         in_state: TensorProductState,
         out_operator: PauliTerm,
-        additional_expectations: Optional[List[List[int]]] = None,
+        additional_expectations: list[list[int]] | None = None,
     ):
         object.__setattr__(self, "in_state", in_state)
         object.__setattr__(self, "out_operator", out_operator)
@@ -211,7 +290,7 @@ class ExperimentSetting:
 
     @classmethod
     def from_str(cls, s: str) -> "ExperimentSetting":
-        """The opposite of str(expt)"""
+        """Opposite of str(expt)."""
         instr, outstr = s.split("→")
         return ExperimentSetting(
             in_state=TensorProductState.from_str(instr),

@@ -18,12 +18,12 @@ from math import pi
 
 import numpy as np
 
-from pyquil.external.rpcq import _compiler_isa_from_dict
-from pyquil.gates import CNOT, H, MEASURE, PHASE, RZ, RX, CZ
+from pyquil.external.rpcq import CompilerISA, Edge, Qubit
+from pyquil.gates import CNOT, CZ, MEASURE, PHASE, RX, RZ, H
 from pyquil.paulis import PauliTerm
 from pyquil.quil import Program
 from pyquil.quilatom import MemoryReference
-from pyquil.quilbase import Halt, Declare
+from pyquil.quilbase import Declare, Halt
 from pyquil.simulation.tools import program_unitary
 
 EMPTY_PROGRAM = Program()
@@ -48,8 +48,15 @@ COMPILED_BELL_STATE = Program(
         Halt(),
     ]
 )
-DUMMY_ISA_DICT = {"1Q": {"0": {}, "1": {}}, "2Q": {"0-1": {}}}
-DUMMY_ISA = _compiler_isa_from_dict(DUMMY_ISA_DICT)
+DUMMY_ISA = CompilerISA(
+    qubits={
+        "0": Qubit(id=0),
+        "1": Qubit(id=1),
+    },
+    edges={
+        "0-1": Edge(ids=[0, 1]),
+    },
+)
 
 COMPILED_BYTES_ARRAY = b"SUPER SECRET PACKAGE"
 RB_ENCODED_REPLY = [[0, 0], [1, 1]]
@@ -65,12 +72,9 @@ def test_quil_to_native_quil(compiler):
     assert np.allclose(p_unitary, scale_out_phase(compiled_p_unitary, p_unitary))
 
 
-def test_local_rb_sequence(benchmarker):
+def test_local_rb_sequence(benchmarker, snapshot):
     response = benchmarker.generate_rb_sequence(2, [PHASE(np.pi / 2, 0), H(0)], seed=52)
-    assert [prog.out() for prog in response] == [
-        "H 0\nPHASE(pi/2) 0\nH 0\nPHASE(pi/2) 0\nPHASE(pi/2) 0\n",
-        "H 0\nPHASE(pi/2) 0\nH 0\nPHASE(pi/2) 0\nPHASE(pi/2) 0\n",
-    ]
+    assert [prog.out() for prog in response] == snapshot
 
 
 def test_local_conjugate_request(benchmarker):
@@ -82,4 +86,3 @@ def test_local_conjugate_request(benchmarker):
 def test_apply_clifford_to_pauli(benchmarker):
     response = benchmarker.apply_clifford_to_pauli(Program("H 0"), PauliTerm("I", 0, 0.34))
     assert response == PauliTerm("I", 0, 0.34)
-

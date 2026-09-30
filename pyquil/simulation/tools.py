@@ -13,16 +13,23 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ##############################################################################
-from typing import List, Sequence, Tuple, Union, cast
+"""Miscellaneous tools that are helpful for simulation."""
+
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from pyquil.experiment._setting import TensorProductState
 from pyquil.paulis import PauliSum, PauliTerm
 from pyquil.quil import Program
 from pyquil.quilatom import Parameter
 from pyquil.quilbase import Gate, Halt, _strip_modifiers
-from pyquil.simulation.matrices import SWAP, STATES, QUANTUM_GATES
+from pyquil.simulation.matrices import QUANTUM_GATES, STATES, SWAP
+
+if TYPE_CHECKING:
+    # ``pyquil.experiment`` is deprecated. It is not imported at runtime, so that importing this
+    # module does not import it (see ``pyquil._deprecation``).
+    from pyquil.experiment._setting import TensorProductState
 
 
 def all_bitstrings(n_bits: int) -> np.ndarray:
@@ -31,7 +38,7 @@ def all_bitstrings(n_bits: int) -> np.ndarray:
     This should be the same as ``np.array(list(itertools.product([0,1], repeat=n_bits)))``
     but faster.
     """
-    n_bitstrings = 2 ** n_bits
+    n_bitstrings = 2**n_bits
     out = np.zeros(shape=(n_bitstrings, n_bits), dtype=np.int8)
 
     tf = np.array([False, True])
@@ -43,14 +50,12 @@ def all_bitstrings(n_bits: int) -> np.ndarray:
         # j indexes from the *right*
         j = n_bits - i - 1
 
-        out[np.tile(np.repeat(tf, 2 ** j), 2 ** i), i] = 1
+        out[np.tile(np.repeat(tf, 2**j), 2**i), i] = 1
     return out
 
 
 def qubit_adjacent_lifted_gate(i: int, matrix: np.ndarray, n_qubits: int) -> np.ndarray:
-    """
-    Lifts input k-qubit gate on adjacent qubits starting from qubit i
-    to complete Hilbert space of dimension 2 ** num_qubits.
+    """Lift k-qubit gate on adjacent qubits from qubit i to complete Hilbert space of dimension 2 ** num_qubits.
 
     Ex: 1-qubit gate, lifts from qubit i
     Ex: 2-qubit gate, lifts from qubits (i+1, i)
@@ -77,26 +82,26 @@ def qubit_adjacent_lifted_gate(i: int, matrix: np.ndarray, n_qubits: int) -> np.
         complete Hilbert space of all num_qubits.
     """
     n_rows, n_cols = matrix.shape
-    assert n_rows == n_cols, "Matrix must be square"
+    if n_rows != n_cols:
+        raise ValueError("Matrix must be square")
     gate_size = np.log2(n_rows)
-    assert gate_size == int(gate_size), "Matrix must be 2^n by 2^n"
+    if gate_size != int(gate_size):
+        raise ValueError("Matrix must be 2^n by 2^n")
     gate_size = int(gate_size)
 
     # Outer-product to lift gate to complete Hilbert space
 
     # bottom: i qubits below target
-    bottom_matrix = np.eye(2 ** i, dtype=np.complex128)
+    bottom_matrix = np.eye(2**i, dtype=np.complex128)
     # top: Nq - i (bottom) - gate_size (gate) qubits above target
     top_qubits = n_qubits - i - gate_size
-    top_matrix = np.eye(2 ** top_qubits, dtype=np.complex128)
+    top_matrix = np.eye(2**top_qubits, dtype=np.complex128)
 
-    return np.kron(top_matrix, np.kron(matrix, bottom_matrix))  # type: ignore
+    return np.kron(top_matrix, np.kron(matrix, bottom_matrix))
 
 
-def two_swap_helper(j: int, k: int, num_qubits: int, qubit_map: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Generate the permutation matrix that permutes two single-particle Hilbert
-    spaces into adjacent positions.
+def two_swap_helper(j: int, k: int, num_qubits: int, qubit_map: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Generate the permutation matrix that permutes two single-particle Hilbert spaces into adjacent positions.
 
     ALWAYS swaps j TO k. Recall that Hilbert spaces are ordered in decreasing
     qubit index order. Hence, j > k implies that j is to the left of k.
@@ -119,7 +124,7 @@ def two_swap_helper(j: int, k: int, num_qubits: int, qubit_map: np.ndarray) -> T
     if not (0 <= j < num_qubits and 0 <= k < num_qubits):
         raise ValueError("Permutation SWAP index not valid")
 
-    perm = np.eye(2 ** num_qubits, dtype=np.complex128)
+    perm = np.eye(2**num_qubits, dtype=np.complex128)
     new_qubit_map = np.copy(qubit_map)
 
     if j == k:
@@ -139,10 +144,8 @@ def two_swap_helper(j: int, k: int, num_qubits: int, qubit_map: np.ndarray) -> T
     return perm, new_qubit_map
 
 
-def permutation_arbitrary(qubit_inds: Sequence[int], n_qubits: int) -> Tuple[np.ndarray, np.ndarray, int]:
-    """
-    Generate the permutation matrix that permutes an arbitrary number of
-    single-particle Hilbert spaces into adjacent positions.
+def permutation_arbitrary(qubit_inds: Sequence[int], n_qubits: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """Generate the permutation matrix that permutes an arbitrary number of single-particle Hilbert spaces into adjacent positions.
 
     Transposes the qubit indices in the order they are passed to a
     contiguous region in the complete Hilbert space, in increasing
@@ -175,7 +178,7 @@ def permutation_arbitrary(qubit_inds: Sequence[int], n_qubits: int) -> Tuple[np.
         start_i - starting index to lift gate from
     """  # noqa: E501
     # Begin construction of permutation
-    perm = np.eye(2 ** n_qubits, dtype=np.complex128)
+    perm = np.eye(2**n_qubits, dtype=np.complex128)
 
     # First, sort the list and find the median.
     sorted_inds = np.sort(qubit_inds)
@@ -217,14 +220,19 @@ def permutation_arbitrary(qubit_inds: Sequence[int], n_qubits: int) -> Tuple[np.
         # for next iteration, go in opposite direction
         right = not right
 
-    assert np.allclose(qubit_arr[final_map[-1] : final_map[0] + 1][::-1], qubit_inds)
+    if not np.allclose(qubit_arr[final_map[-1] : final_map[0] + 1][::-1], qubit_inds):
+        segment_values = qubit_arr[final_map[-1] : final_map[0] + 1][::-1]
+        raise ValueError(
+            f"Permutation matrix not constructed correctly. "
+            f"Expected array segment {segment_values} to match qubit indices {qubit_inds}. "
+            f"Segment values: {segment_values}, Expected values: {qubit_inds}"
+        )
+
     return perm, qubit_arr[::-1], start_i
 
 
 def lifted_gate_matrix(matrix: np.ndarray, qubit_inds: Sequence[int], n_qubits: int) -> np.ndarray:
-    """
-    Lift a unitary matrix to act on the specified qubits in a full ``n_qubits``-qubit
-    Hilbert space.
+    """Lift a unitary matrix to act on the specified qubits in a full ``n_qubits``-qubit Hilbert space.
 
     For 1-qubit gates, this is easy and can be achieved with appropriate kronning of identity
     matrices. For 2-qubit gates acting on adjacent qubit indices, it is also easy. However,
@@ -237,9 +245,11 @@ def lifted_gate_matrix(matrix: np.ndarray, qubit_inds: Sequence[int], n_qubits: 
     :return: A 2^n by 2^n lifted version of the unitary matrix acting on the specified qubits.
     """
     n_rows, n_cols = matrix.shape
-    assert n_rows == n_cols, "Matrix must be square"
+    if n_rows != n_cols:
+        raise ValueError("Matrix must be square")
     gate_size = np.log2(n_rows)
-    assert gate_size == int(gate_size), "Matrix must be 2^n by 2^n"
+    if gate_size != int(gate_size):
+        raise ValueError("Matrix must be 2^n by 2^n")
     gate_size = int(gate_size)
 
     pi_permutation_matrix, final_map, start_i = permutation_arbitrary(qubit_inds, n_qubits)
@@ -255,8 +265,7 @@ def lifted_gate_matrix(matrix: np.ndarray, qubit_inds: Sequence[int], n_qubits: 
 
 
 def lifted_gate(gate: Gate, n_qubits: int) -> np.ndarray:
-    """
-    Lift a pyquil :py:class:`Gate` in a full ``n_qubits``-qubit Hilbert space.
+    """Lift a pyquil :py:class:`Gate` in a full ``n_qubits``-qubit Hilbert space.
 
     This function looks up the matrix form of the gate and then dispatches to
     :py:func:`lifted_gate_matrix` with the target qubits.
@@ -265,7 +274,6 @@ def lifted_gate(gate: Gate, n_qubits: int) -> np.ndarray:
     :param n_qubits: The total number of qubits.
     :return: A 2^n by 2^n lifted version of the gate acting on its specified qubits.
     """
-
     zero = np.eye(2)
     zero[1, 1] = 0
     one = np.eye(2)
@@ -302,9 +310,10 @@ def lifted_gate(gate: Gate, n_qubits: int) -> np.ndarray:
             elif mod == "CONTROLLED":
                 child = _strip_modifiers(gate, limit=1)
                 matrix = _gate_matrix(child)
-                return np.kron(zero, np.eye(*matrix.shape)) + np.kron(one, matrix)  # type: ignore
+                return np.kron(zero, np.eye(*matrix.shape)) + np.kron(one, matrix)
             elif mod == "FORKED":
-                assert len(gate.params) % 2 == 0
+                if len(gate.params) % 2 != 0:
+                    raise ValueError("FORKED gates must have an even number of parameters.")
                 p0, p1 = gate.params[: len(gate.params) // 2], gate.params[len(gate.params) // 2 :]
                 child = _strip_modifiers(gate, limit=1)
                 # handle the first half of the FORKED params
@@ -313,23 +322,22 @@ def lifted_gate(gate: Gate, n_qubits: int) -> np.ndarray:
                 # handle the second half of the FORKED params
                 child.params = p1
                 mat1 = _gate_matrix(child)
-                return np.kron(zero, mat0) + np.kron(one, mat1)  # type: ignore
+                return np.kron(zero, mat0) + np.kron(one, mat1)
             else:
-                raise TypeError("Unsupported gate modifier {}".format(mod))
+                raise TypeError(f"Unsupported gate modifier {mod}")
 
     matrix = _gate_matrix(gate)
 
-    return lifted_gate_matrix(matrix=matrix, qubit_inds=[q.index for q in gate.qubits], n_qubits=n_qubits)
+    return lifted_gate_matrix(matrix=matrix, qubit_inds=gate.get_qubit_indices(), n_qubits=n_qubits)
 
 
 def program_unitary(program: Program, n_qubits: int) -> np.ndarray:
-    """
-    Return the unitary of a pyQuil program.
+    """Return the unitary of a pyQuil program.
 
     :param program: A program consisting only of :py:class:`Gate`.:
     :return: a unitary corresponding to the composition of the program's gates.
     """
-    umat: np.ndarray = np.eye(2 ** n_qubits)
+    umat: np.ndarray = np.eye(2**n_qubits)
     for instruction in program:
         if isinstance(instruction, Gate):
             unitary = lifted_gate(gate=instruction, n_qubits=n_qubits)
@@ -344,11 +352,8 @@ def program_unitary(program: Program, n_qubits: int) -> np.ndarray:
     return umat
 
 
-def lifted_pauli(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np.ndarray:
-    """
-    Takes a PauliSum object along with a list of
-    qubits and returns a matrix corresponding the tensor representation of the
-    object.
+def lifted_pauli(pauli_sum: PauliSum | PauliTerm, qubits: list[int]) -> np.ndarray:
+    """Return a matrix corresponding to the tensor representation of the given PauliSum and qubits.
 
     Useful for generating the full Hamiltonian after a particular fermion to
     pauli transformation. For example:
@@ -357,10 +362,12 @@ def lifted_pauli(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np
 
     .. code-block:: python
 
-       [[ 0.+0.j,  0.+0.j,  0.+0.j,  0.-2.j],
-        [ 0.+0.j,  0.+0.j,  0.+0.j,  0.+0.j],
-        [ 0.+0.j,  0.+0.j,  0.+0.j,  0.+0.j],
-        [ 0.+2.j,  0.+0.j,  0.+0.j,  0.+0.j]]
+       [
+           [0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j, 0.0 - 2.0j],
+           [0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j],
+           [0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j],
+           [0.0 + 2.0j, 0.0 + 0.0j, 0.0 + 0.0j, 0.0 + 0.0j],
+       ]
 
     Developer note: Quil and the QVM like qubits to be ordered such that qubit 0 is on the right.
     Therefore, in ``qubit_adjacent_lifted_gate``, ``lifted_pauli``, and ``lifted_state_operator``,
@@ -374,7 +381,7 @@ def lifted_pauli(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np
         pauli_sum = PauliSum([pauli_sum])
 
     n_qubits = len(qubits)
-    result_hilbert = np.zeros((2 ** n_qubits, 2 ** n_qubits), dtype=np.complex128)
+    result_hilbert = np.zeros((2**n_qubits, 2**n_qubits), dtype=np.complex128)
     # left kronecker product corresponds to the correct basis ordering
     for term in pauli_sum.terms:
         term_hilbert = np.array([1])
@@ -386,11 +393,8 @@ def lifted_pauli(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np
     return result_hilbert
 
 
-def tensor_up(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np.ndarray:
-    """
-    Takes a PauliSum object along with a list of
-    qubits and returns a matrix corresponding the tensor representation of the
-    object.
+def tensor_up(pauli_sum: PauliSum | PauliTerm, qubits: list[int]) -> np.ndarray:
+    """Return a matrix corresponding to the tensor representation of the given PauliSum and qubits.
 
     This is the same as :py:func:`lifted_pauli`. Nick R originally wrote this functionality
     and really likes the name ``tensor_up``. Who can blame him?
@@ -402,9 +406,8 @@ def tensor_up(pauli_sum: Union[PauliSum, PauliTerm], qubits: List[int]) -> np.nd
     return lifted_pauli(pauli_sum=pauli_sum, qubits=qubits)
 
 
-def lifted_state_operator(state: TensorProductState, qubits: List[int]) -> np.ndarray:
-    """Take a TensorProductState along with a list of qubits and return a matrix
-    corresponding to the tensored-up representation of the states' density operator form.
+def lifted_state_operator(state: "TensorProductState", qubits: list[int]) -> np.ndarray:
+    """Return a matrix corresponding to the tensored-up representation of the given state and qubits.
 
     Developer note: Quil and the QVM like qubits to be ordered such that qubit 0 is on the right.
     Therefore, in ``qubit_adjacent_lifted_gate``, ``lifted_pauli``, and ``lifted_state_operator``,
@@ -416,7 +419,8 @@ def lifted_state_operator(state: TensorProductState, qubits: List[int]) -> np.nd
     mat: np.ndarray = np.eye(1)
     for qubit in qubits:
         oneq_state = state[qubit]
-        assert oneq_state.qubit == qubit
+        if oneq_state.qubit != qubit:
+            raise ValueError(f"State qubit mismatch: {oneq_state.qubit} != {qubit}")
         state_vector = STATES[oneq_state.label][oneq_state.index][:, np.newaxis]
         state_matrix = state_vector @ state_vector.conj().T
         mat = np.kron(state_matrix, mat)
@@ -424,9 +428,7 @@ def lifted_state_operator(state: TensorProductState, qubits: List[int]) -> np.nd
 
 
 def scale_out_phase(unitary1: np.ndarray, unitary2: np.ndarray) -> np.ndarray:
-    """
-    Returns a matrix m equal to unitary1/θ where ɑ satisfies unitary2
-    = e^(iθ)·unitary1.
+    """Return a matrix m equal to unitary1/θ where ɑ satisfies unitary2 = e^(iθ)·unitary1.
 
     :param unitary1: The unitary matrix from which the constant of
         proportionality should be scaled-out.
@@ -444,4 +446,12 @@ def scale_out_phase(unitary1: np.ndarray, unitary2: np.ndarray) -> np.ndarray:
             goodness_value = np.abs(unitary1[j, 0])
             rescale_value = unitary2[j, 0] / unitary1[j, 0]
 
-    return rescale_value * unitary1  # type: ignore
+    return rescale_value * unitary1
+
+
+def unitary_equal(A: np.ndarray, B: np.ndarray) -> bool:
+    """Check if two matrices are unitarily equal."""
+    if A.shape != B.shape:
+        raise ValueError("Matrices must have the same shape")
+    dim = A.shape[0]
+    return np.allclose(np.abs(np.trace(A.T.conjugate() @ B) / dim), 1.0)

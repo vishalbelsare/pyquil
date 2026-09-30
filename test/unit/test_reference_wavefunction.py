@@ -1,3 +1,7 @@
+# TODO(pyquil-5.0): Remove this file. These tests exercise ReferenceWavefunctionSimulator/PyQVM,
+# which are superseded by PureStateVectorSimulator and TrajectorySimulator.
+# Equivalent coverage lives in test_state_vector.py.
+
 import functools
 import inspect
 import random
@@ -11,21 +15,21 @@ from pyquil.api import WavefunctionSimulator
 from pyquil.gates import (
     CNOT,
     CPHASE,
-    H,
     HALT,
-    I,
     MEASURE,
     MOVE,
     PHASE,
+    QUANTUM_GATES,
     RESET,
     RX,
     RY,
     RZ,
     SWAP,
+    H,
+    I,
     X,
-    QUANTUM_GATES,
 )
-from pyquil.paulis import PauliTerm, exponentiate, sZ, sX, sI, sY
+from pyquil.paulis import PauliTerm, exponentiate, sI, sX, sY, sZ
 from pyquil.pyqvm import PyQVM
 from pyquil.quil import Program
 from pyquil.quilatom import MemoryReference
@@ -620,6 +624,7 @@ def test_if_then():
     branch_b = Program()
     prog.if_then(creg, branch_a, branch_b)
     prog += MEASURE(0, creg)
+    prog.resolve_placeholders()
     qam = PyQVM(n_qubits=1, quantum_simulator_type=ReferenceWavefunctionSimulator)
     qam.execute(prog)
     assert qam.ram["creg"][0] == 0
@@ -634,6 +639,7 @@ def test_if_then_2():
     branch_b = Program()
     prog.if_then(creg, branch_a, branch_b)
     prog += MEASURE(0, creg)
+    prog.resolve_placeholders()
     qam = PyQVM(n_qubits=1, quantum_simulator_type=ReferenceWavefunctionSimulator)
     qam.execute(prog)
     assert qam.ram["creg"][0] == 1
@@ -649,6 +655,7 @@ def test_while():
     # Put it all together in a loop program:
     loop_prog = init_register.while_do(classical_flag_register, loop_body)
 
+    loop_prog.resolve_placeholders()
     qam = PyQVM(n_qubits=1, quantum_simulator_type=ReferenceWavefunctionSimulator)
     qam.execute(loop_prog)
     assert qam.ram[classical_flag_register.name][0] == 0
@@ -711,7 +718,7 @@ def test_bell_state():
 
 def test_occupation_basis():
     prog = Program().inst([X(0), X(1), I(2), I(3)])
-    state = np.zeros(2 ** 4)
+    state = np.zeros(2**4)
     state[3] = 1.0
 
     qam = PyQVM(n_qubits=4, quantum_simulator_type=ReferenceWavefunctionSimulator)
@@ -895,7 +902,7 @@ def _generate_random_program(n_qubits, length, include_measures=False):
             elif param == "angle":
                 param_val = random.uniform(-2 * pi, 2 * pi)
             else:
-                raise ValueError("Unknown gate parameter {}".format(param))
+                raise ValueError(f"Unknown gate parameter {param}")
 
             param_vals.append(param_val)
 
